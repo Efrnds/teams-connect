@@ -107,7 +107,7 @@ Com API e web no ar e **dois usuários** (dois browsers ou anônimo + normal):
 | 2 | B atende; áudio bidirecional audível | **pendente QA** (não automatizável no CI) |
 | 3 | A encerra; mic liberado nos dois | pass (teardown no hook) / **áudio: pendente QA** |
 | 4 | B recusa; sem mídia ativa | pass (testes + fluxo UI) |
-| 5 | B offline; A vê indisponível sem “chamando” | pass (testes gateway + `u2u-call-flow`) |
+| 5 | B offline ou ID desconhecido; A vê indisponível sem “chamando” | pass (testes gateway + `u2u-call-flow`) |
 | 6 | Chat normal sem regressão | **pendente QA** |
 | 7 | Microfone negado; mensagem clara | pass (`messageForMediaError` + teste) |
 
