@@ -24,6 +24,9 @@ export class CallSessionStore {
     const session = this.sessions.get(callId);
     if (!session) return undefined;
     session.state = state;
+    if (state === 'active' && session.activeAt === undefined) {
+      session.activeAt = Date.now();
+    }
     return session;
   }
 
@@ -62,6 +65,19 @@ export class CallSessionStore {
     for (const [callId, session] of this.sessions.entries()) {
       if (session.state !== 'ringing') continue;
       if (now - session.createdAt <= CALL_SIGNAL_LIMITS.ringingTtlMs) continue;
+      this.sessions.delete(callId);
+      expired.push(session);
+    }
+    return expired;
+  }
+
+  /** Remove sessões active que excederam o TTL (evita busy permanente). */
+  expireStaleActive(now = Date.now()): CallSession[] {
+    const expired: CallSession[] = [];
+    for (const [callId, session] of this.sessions.entries()) {
+      if (session.state !== 'active') continue;
+      const activeAt = session.activeAt ?? session.createdAt;
+      if (now - activeAt <= CALL_SIGNAL_LIMITS.activeTtlMs) continue;
       this.sessions.delete(callId);
       expired.push(session);
     }

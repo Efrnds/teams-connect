@@ -1,5 +1,21 @@
 export type InviteAck = { ok?: boolean; error?: string } | undefined;
 
+export type ClientCallPhase = 'idle' | 'incoming' | 'outgoing' | 'connecting' | 'active';
+
+/** Callee ocupa: rejeita invite automático se já há outra chamada local. */
+export function shouldRejectIncomingWhileBusy(phase: ClientCallPhase): boolean {
+  return phase !== 'idle';
+}
+
+/** Bloqueia SDP/ICE se o servidor rotular remetente diferente do peer esperado. */
+export function assertSignalingFromPeer(
+  expectedPeerUserId: string | undefined,
+  fromUserId: string | undefined,
+): boolean {
+  if (!expectedPeerUserId || !fromUserId) return true;
+  return fromUserId === expectedPeerUserId;
+}
+
 /** Só entra em "Chamando…" após o servidor aceitar o invite. */
 export function shouldStartRingingAfterInvite(ack: InviteAck): boolean {
   return ack?.ok === true;
@@ -24,6 +40,7 @@ export function messageAfterInviteAck(ack: InviteAck): string | null {
 export function messageForEndedReason(reason?: string): string | undefined {
   if (reason === 'peer_disconnected') return 'A outra parte desconectou.';
   if (reason === 'ring_timeout') return 'Sem resposta.';
+  if (reason === 'active_timeout') return 'Chamada encerrada por tempo limite no servidor.';
   return undefined;
 }
 

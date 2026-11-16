@@ -6,6 +6,8 @@ export type CallSession = {
   calleeId: string;
   state: CallSessionState;
   createdAt: number;
+  /** Preenchido ao transitar para `active` (TTL de chamada ativa no servidor). */
+  activeAt?: number;
 };
 
 export type CallInvitePayload = {

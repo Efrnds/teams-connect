@@ -5,9 +5,11 @@ import type { Socket } from 'socket.io-client';
 import { resolveIceServers } from '@/lib/ice-servers';
 import type { CallPeer, CallPhase } from '@/lib/call-events';
 import {
+  assertSignalingFromPeer,
   messageAfterInviteAck,
   messageForEndedReason,
   messageForMediaError,
+  shouldRejectIncomingWhileBusy,
   shouldStartRingingAfterInvite,
 } from '@/lib/u2u-call-flow';
 import { useCallRingtone } from '@/hooks/use-call-ringtone';
@@ -227,7 +229,7 @@ export function useU2uCall({
     if (!socket) return;
 
     const onIncoming = (payload: { callId: string; callerUserId: string }) => {
-      if (phaseRef.current !== 'idle') {
+      if (shouldRejectIncomingWhileBusy(phaseRef.current)) {
         socket.emit('call:reject', { callId: payload.callId });
         return;
       }
@@ -275,21 +277,13 @@ export function useU2uCall({
       resetCall('Contato ocupado.');
     };
 
-    const assertPayloadPeer = (fromUserId?: string) => {
-      const expected = peerRef.current?.userId;
-      if (expected && fromUserId && fromUserId !== expected) {
-        return false;
-      }
-      return true;
-    };
-
     const onOffer = async (payload: {
       callId: string;
       sdp: RTCSessionDescriptionInit;
       fromUserId?: string;
     }) => {
       if (callIdRef.current !== payload.callId) return;
-      if (!assertPayloadPeer(payload.fromUserId)) return;
+      if (!assertSignalingFromPeer(peerRef.current?.userId, payload.fromUserId)) return;
       try {
         const pc = await ensurePeerConnection();
         await pc.setRemoteDescription(payload.sdp);
@@ -312,7 +306,7 @@ export function useU2uCall({
       fromUserId?: string;
     }) => {
       if (callIdRef.current !== payload.callId || !pcRef.current) return;
-      if (!assertPayloadPeer(payload.fromUserId)) return;
+      if (!assertSignalingFromPeer(peerRef.current?.userId, payload.fromUserId)) return;
       try {
         await pcRef.current.setRemoteDescription(payload.sdp);
         setPhase('active');
@@ -327,7 +321,7 @@ export function useU2uCall({
       fromUserId?: string;
     }) => {
       if (callIdRef.current !== payload.callId || !pcRef.current || !payload.candidate) return;
-      if (!assertPayloadPeer(payload.fromUserId)) return;
+      if (!assertSignalingFromPeer(peerRef.current?.userId, payload.fromUserId)) return;
       try {
         await pcRef.current.addIceCandidate(payload.candidate);
       } catch {

@@ -16,6 +16,7 @@ import {
   type CallInvitePayload,
   type CallSdpPayload,
 } from './call-signaling.js';
+import { CallKnownUsersRegistry } from './call-known-users.registry.js';
 import { CallSessionStore } from './call-session.store.js';
 import { ChatCallGatewayLogic } from './chat-call-gateway.logic.js';
 
@@ -42,6 +43,7 @@ export class ChatGateway implements OnGatewayConnection {
     @Inject(JwtService) private readonly jwt: JwtService,
     @Inject(ChannelsService) private readonly channels: ChannelsService,
     @Inject(CallSessionStore) private readonly callSessions: CallSessionStore,
+    @Inject(CallKnownUsersRegistry) private readonly knownUsers: CallKnownUsersRegistry,
   ) {
     this.callLogic = new ChatCallGatewayLogic(callSessions);
   }
@@ -64,6 +66,7 @@ export class ChatGateway implements OnGatewayConnection {
         secret,
       });
       client.userId = payload.sub;
+      this.knownUsers.register(payload.sub);
       await client.join(`user:${payload.sub}`);
       this.server.emit('presence:update', {
         userId: payload.sub,
@@ -104,12 +107,18 @@ export class ChatGateway implements OnGatewayConnection {
     }
   }
 
-  private flushExpiredRinging() {
-    const outcome = this.callLogic.expireStaleRingingSessions();
-    for (const item of outcome.expired) {
+  private flushExpiredSessions() {
+    const ringing = this.callLogic.expireStaleRingingSessions();
+    for (const item of ringing.expired) {
       const payload = { callId: item.callId, reason: item.reason };
       this.server.to(this.userRoom(item.callerId)).emit('call:ended', payload);
       this.server.to(this.userRoom(item.calleeId)).emit('call:cancelled', payload);
+    }
+    const active = this.callLogic.expireStaleActiveSessions();
+    for (const item of active.expired) {
+      const payload = { callId: item.callId, reason: item.reason };
+      this.server.to(this.userRoom(item.callerId)).emit('call:ended', payload);
+      this.server.to(this.userRoom(item.calleeId)).emit('call:ended', payload);
     }
   }
 
@@ -175,9 +184,15 @@ export class ChatGateway implements OnGatewayConnection {
     @ConnectedSocket() client: AuthedSocket,
     @MessageBody() body: CallInvitePayload,
   ) {
-    this.flushExpiredRinging();
+    this.flushExpiredSessions();
     const calleeOnline = await this.isUserOnline(body.calleeUserId);
-    const result = this.callLogic.evaluateInvite(client.userId, body, calleeOnline);
+    const calleeKnown = this.knownUsers.isKnown(body.calleeUserId);
+    const result = this.callLogic.evaluateInvite(
+      client.userId,
+      body,
+      calleeOnline,
+      calleeKnown,
+    );
     if (!result.ok) {
       if (result.emitToCaller) {
         client.emit(result.emitToCaller.event, result.emitToCaller.payload);
@@ -193,7 +208,7 @@ export class ChatGateway implements OnGatewayConnection {
     @ConnectedSocket() client: AuthedSocket,
     @MessageBody() body: CallIdPayload,
   ) {
-    this.flushExpiredRinging();
+    this.flushExpiredSessions();
     const auth = this.callLogic.evaluateCalleeAction(client.userId, body, 'callee');
     if (!auth.ok) return auth;
     const session = auth.session!;
@@ -213,7 +228,7 @@ export class ChatGateway implements OnGatewayConnection {
     @ConnectedSocket() client: AuthedSocket,
     @MessageBody() body: CallIdPayload,
   ) {
-    this.flushExpiredRinging();
+    this.flushExpiredSessions();
     const auth = this.callLogic.evaluateRejectCall(client.userId, body);
     if (!auth.ok) return auth;
     const session = auth.session!;
@@ -229,7 +244,7 @@ export class ChatGateway implements OnGatewayConnection {
     @ConnectedSocket() client: AuthedSocket,
     @MessageBody() body: CallIdPayload,
   ) {
-    this.flushExpiredRinging();
+    this.flushExpiredSessions();
     const auth = this.callLogic.evaluateCalleeAction(client.userId, body, 'participant');
     if (!auth.ok) return auth;
     const session = auth.session!;
@@ -251,7 +266,7 @@ export class ChatGateway implements OnGatewayConnection {
     @ConnectedSocket() client: AuthedSocket,
     @MessageBody() body: CallIdPayload,
   ) {
-    this.flushExpiredRinging();
+    this.flushExpiredSessions();
     const auth = this.callLogic.evaluateCalleeAction(client.userId, body, 'participant');
     if (!auth.ok) return auth;
     const session = auth.session!;

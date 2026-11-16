@@ -58,6 +58,15 @@ export type ExpiredRingingOutcome = {
   }>;
 };
 
+export type ExpiredActiveOutcome = {
+  expired: Array<{
+    callId: string;
+    callerId: string;
+    calleeId: string;
+    reason: string;
+  }>;
+};
+
 export class ChatCallGatewayLogic {
   readonly rateLimit = new CallSignalingRateLimit();
 
@@ -71,6 +80,18 @@ export class ChatCallGatewayLogic {
         callerId: session.callerId,
         calleeId: session.calleeId,
         reason: 'ring_timeout',
+      })),
+    };
+  }
+
+  expireStaleActiveSessions(now = Date.now()): ExpiredActiveOutcome {
+    const sessions = this.callSessions.expireStaleActive(now);
+    return {
+      expired: sessions.map((session) => ({
+        callId: session.callId,
+        callerId: session.callerId,
+        calleeId: session.calleeId,
+        reason: 'active_timeout',
       })),
     };
   }
@@ -93,8 +114,10 @@ export class ChatCallGatewayLogic {
     clientUserId: string | undefined,
     body: CallInvitePayload,
     calleeOnline: boolean,
+    calleeKnown: boolean,
   ): InviteOutcome {
     this.callSessions.expireStaleRinging();
+    this.callSessions.expireStaleActive();
     if (!assertSenderMatches(clientUserId, body.fromUserId) || !body.callId || !body.calleeUserId) {
       return { ok: false, error: 'unauthorized' };
     }
@@ -131,7 +154,7 @@ export class ChatCallGatewayLogic {
         },
       };
     }
-    if (!calleeOnline) {
+    if (!calleeKnown || !calleeOnline) {
       return {
         ok: false,
         error: 'offline',

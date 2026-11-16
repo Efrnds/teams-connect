@@ -8,6 +8,8 @@ export const CALL_SIGNAL_LIMITS = {
   windowMs: 10_000,
   iceFetchWindowMs: 60_000,
   ringingTtlMs: 50_000,
+  /** Encerra sessões active antigas para liberar estado ocupado (busy). */
+  activeTtlMs: 3_600_000,
   maxInviteJsonChars: 2_048,
   maxSdpJsonChars: 64_000,
   maxIceJsonChars: 8_192,
