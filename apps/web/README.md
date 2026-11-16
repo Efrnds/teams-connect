@@ -16,6 +16,10 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Chamadas de voz (WebRTC / ICE)
+
+O browser usa STUN público via `NEXT_PUBLIC_ICE_STUN_URLS` (opcional). **Credencial TURN não vai no front**: configure na API (`ICE_TURN_URLS`, `ICE_TURN_USERNAME`, `ICE_TURN_CREDENTIAL`) e o cliente busca `GET /api/chat/ice-servers` com JWT (`src/lib/ice-servers.ts`, hook `use-u2u-call`).
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
