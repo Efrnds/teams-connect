@@ -18,15 +18,13 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ## Chamadas de voz (WebRTC / ICE)
 
-### Integração em runtime (obrigatória para funcionar)
+### Como subir (Texsa + u2u)
 
-Este PR entrega **só** os arquivos da feature (escopo travado). Para ligação ponta a ponta:
+1. **API:** `cd apps/api && pnpm install && pnpm exec prisma migrate deploy && pnpm start:dev` — o `AppModule` já importa `ChatModule` (Socket.IO `/chat`).
+2. **Web:** `cd apps/web && pnpm install && pnpm dev` — a home redireciona para `/app` (`ChatShell` com **Ligar**).
+3. Variáveis: `JWT_ACCESS_SECRET`, `NEXT_PUBLIC_API_URL=http://localhost:4000`, ICE opcional (tabela abaixo).
 
-1. No `AppModule` da API, importar `ChatModule` — passo a passo em [`apps/api/src/chat/INTEGRATION.md`](../api/src/chat/INTEGRATION.md).
-2. Garantir dependências do chat Texsa (`ChannelsModule`, JWT, `socket.io` na API).
-3. Na web, renderizar `ChatShell` na rota autenticada.
-
-Sem (1), a UI “Ligar” não recebe eventos `call:*`.
+Detalhes técnicos extras: [`apps/api/src/chat/INTEGRATION.md`](../api/src/chat/INTEGRATION.md).
 
 **Segredos:** não versionar `.env` com senhas (`deploy/compose/.env` no repositório deve usar só variáveis locais não commitadas; rotacionar credenciais expostas).
 
@@ -79,17 +77,17 @@ Use credenciais TURN **dedicadas** ao Texsa (não reutilize senhas de admin do s
 Lógica de UI/estado do invite (`src/lib/u2u-call-flow.ts`):
 
 ```bash
-cd apps/api && pnpm vitest run src/chat/u2u-call-flow.spec.ts
+cd apps/web && pnpm test
 ```
 
-Sinalização no servidor: `cd apps/api && pnpm test -- src/chat`.
+Sinalização no servidor (sem importar o web): `cd apps/api && pnpm test -- src/chat`.
 
 ### Checklist manual — áudio bidirecional (critério 3)
 
 Com API e web no ar e **dois usuários** (dois browsers ou anônimo + normal):
 
 1. A em **Pessoas** ou DM → **Ligar** para B: B vê incoming; A fica em **Chamando…** só após o servidor aceitar o invite.
-2. B **Atender**: fala de A audível em B e de B audível em A; UI **Em chamada**.
+2. B **Atender**: o app envia aceite ao servidor **antes** de abrir o microfone (ICE só após sessão `active`); fala audível nos dois lados; UI **Em chamada**.
 3. A **Encerrar**: ambos voltam ao chat; LED de microfone apagado nos dois.
 4. B **Recusar** numa nova tentativa: A vê recusa, sem captura de áudio ativa.
 5. B offline/aba fechada: A vê **Usuário indisponível** sem ficar em chamando.
@@ -107,11 +105,15 @@ Com API e web no ar e **dois usuários** (dois browsers ou anônimo + normal):
 | 2 | B atende; áudio bidirecional audível | **pendente QA** (não automatizável no CI) |
 | 3 | A encerra; mic liberado nos dois | pass (teardown no hook) / **áudio: pendente QA** |
 | 4 | B recusa; sem mídia ativa | pass (testes + fluxo UI) |
-| 5 | B offline ou ID desconhecido; A vê indisponível sem “chamando” | pass (testes gateway + `u2u-call-flow`) |
+| 5 | B sem socket `/chat` ou ID fora do diretório; A vê indisponível | pass (testes + `UsersService`) |
 | 6 | Chat normal sem regressão | **pendente QA** |
 | 7 | Microfone negado; mensagem clara | pass (`messageForMediaError` + teste) |
 
-**Status 2026-11-16:** itens 4–5 e 7 cobertos por testes unitários; **itens 1–3 e 6 (áudio ao vivo e chat)** exigem QA com dois browsers — preencher pass/fail antes do merge.
+**Status 2026-11-17:** API+web compilam; `ChatModule` no `AppModule`; `/app` → `ChatShell`. **Itens 2–3 (áudio bidirecional)** exigem QA humano com duas contas (comando rápido abaixo). CI não substitui microfone.
+
+**Roteiro QA (2 contas, ~5 min):** subir API+web → login A em browser normal e B em anônimo → ambos em `/app` → A liga B → B atende → falar nos dois lados → A encerra → repetir com B recusando.
+
+**Várias réplicas da API:** sessões de chamada ficam em memória por processo; use **sticky WebSocket** no load balancer ou uma réplica até haver store compartilhado.
 
 ### Escala / múltiplas instâncias da API
 

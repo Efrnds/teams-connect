@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   ConnectedSocket,
   MessageBody,
@@ -19,8 +20,8 @@ import {
 import { CallKnownUsersRegistry } from './call-known-users.registry.js';
 import { CallSessionStore } from './call-session.store.js';
 import { ChatCallGatewayLogic } from './chat-call-gateway.logic.js';
-
-type AuthedSocket = Socket & { userId?: string };
+import { type AuthedSocket, ensureSocketJwtValid } from './chat-socket-auth.js';
+import { UsersService } from '../users/users.service.js';
 
 @WebSocketGateway({
   cors: {
@@ -44,8 +45,13 @@ export class ChatGateway implements OnGatewayConnection {
     @Inject(ChannelsService) private readonly channels: ChannelsService,
     @Inject(CallSessionStore) private readonly callSessions: CallSessionStore,
     @Inject(CallKnownUsersRegistry) private readonly knownUsers: CallKnownUsersRegistry,
+    @Inject(UsersService) private readonly users: UsersService,
   ) {
     this.callLogic = new ChatCallGatewayLogic(callSessions);
+  }
+
+  private async requireAuth(client: AuthedSocket): Promise<boolean> {
+    return ensureSocketJwtValid(client, this.jwt, (userId) => this.endCallsForUser(userId));
   }
 
   async handleConnection(client: AuthedSocket) {
@@ -66,6 +72,7 @@ export class ChatGateway implements OnGatewayConnection {
         secret,
       });
       client.userId = payload.sub;
+      client.authToken = token;
       this.knownUsers.register(payload.sub);
       await client.join(`user:${payload.sub}`);
       this.server.emit('presence:update', {
@@ -139,6 +146,7 @@ export class ChatGateway implements OnGatewayConnection {
     @ConnectedSocket() client: AuthedSocket,
     @MessageBody() body: { channelId: string },
   ) {
+    if (!(await this.requireAuth(client))) return { ok: false };
     if (!client.userId) {
       for (let i = 0; i < 20 && !client.userId; i++) {
         await new Promise((r) => setTimeout(r, 25));
@@ -154,11 +162,16 @@ export class ChatGateway implements OnGatewayConnection {
   }
 
   @SubscribeMessage('typing:start')
-  typingStart(
+  async typingStart(
     @ConnectedSocket() client: AuthedSocket,
     @MessageBody() body: { channelId: string },
   ) {
-    if (!client.userId) return;
+    if (!(await this.requireAuth(client)) || !client.userId) return;
+    try {
+      await this.channels.assertMember(BigInt(body.channelId), BigInt(client.userId));
+    } catch {
+      return;
+    }
     client.to(`channel:${body.channelId}`).emit('typing:update', {
       channelId: body.channelId,
       userId: client.userId,
@@ -167,11 +180,16 @@ export class ChatGateway implements OnGatewayConnection {
   }
 
   @SubscribeMessage('typing:stop')
-  typingStop(
+  async typingStop(
     @ConnectedSocket() client: AuthedSocket,
     @MessageBody() body: { channelId: string },
   ) {
-    if (!client.userId) return;
+    if (!(await this.requireAuth(client)) || !client.userId) return;
+    try {
+      await this.channels.assertMember(BigInt(body.channelId), BigInt(client.userId));
+    } catch {
+      return;
+    }
     client.to(`channel:${body.channelId}`).emit('typing:update', {
       channelId: body.channelId,
       userId: client.userId,
@@ -184,14 +202,31 @@ export class ChatGateway implements OnGatewayConnection {
     @ConnectedSocket() client: AuthedSocket,
     @MessageBody() body: CallInvitePayload,
   ) {
+    if (!(await this.requireAuth(client))) return { ok: false, error: 'unauthorized' };
     this.flushExpiredSessions();
+    let calleeInDirectory = false;
+    try {
+      calleeInDirectory = !!(await this.users.findById(BigInt(body.calleeUserId)));
+    } catch {
+      calleeInDirectory = false;
+    }
+    const serverCallId = randomUUID();
+    if (!calleeInDirectory) {
+      client.emit('call:unavailable', {
+        callId: serverCallId,
+        calleeUserId: body.calleeUserId,
+      });
+      return { ok: false, error: 'offline' };
+    }
     const calleeOnline = await this.isUserOnline(body.calleeUserId);
-    const calleeKnown = this.knownUsers.isKnown(body.calleeUserId);
     const result = this.callLogic.evaluateInvite(
       client.userId,
-      body,
+      {
+        ...body,
+        callId: serverCallId,
+        fromUserId: client.userId,
+      },
       calleeOnline,
-      calleeKnown,
     );
     if (!result.ok) {
       if (result.emitToCaller) {
@@ -200,21 +235,22 @@ export class ChatGateway implements OnGatewayConnection {
       return { ok: false, error: result.error };
     }
     this.server.to(this.userRoom(body.calleeUserId)).emit('call:incoming', result.notifyCallee);
-    return { ok: true };
+    return { ok: true, callId: result.callId };
   }
 
   @SubscribeMessage('call:accept')
-  acceptCall(
+  async acceptCall(
     @ConnectedSocket() client: AuthedSocket,
     @MessageBody() body: CallIdPayload,
   ) {
+    if (!(await this.requireAuth(client))) return { ok: false, error: 'unauthorized' };
     this.flushExpiredSessions();
-    const auth = this.callLogic.evaluateCalleeAction(client.userId, body, 'callee');
+    const auth = this.callLogic.evaluateAccept(client.userId, {
+      ...body,
+      fromUserId: client.userId,
+    });
     if (!auth.ok) return auth;
     const session = auth.session!;
-    if (session.state !== 'ringing') {
-      return { ok: false, error: 'not_found' };
-    }
     this.callSessions.updateState(body.callId, 'active');
     this.server.to(this.userRoom(session.callerId)).emit('call:accepted', {
       callId: body.callId,
@@ -224,12 +260,16 @@ export class ChatGateway implements OnGatewayConnection {
   }
 
   @SubscribeMessage('call:reject')
-  rejectCall(
+  async rejectCall(
     @ConnectedSocket() client: AuthedSocket,
     @MessageBody() body: CallIdPayload,
   ) {
+    if (!(await this.requireAuth(client))) return { ok: false, error: 'unauthorized' };
     this.flushExpiredSessions();
-    const auth = this.callLogic.evaluateRejectCall(client.userId, body);
+    const auth = this.callLogic.evaluateRejectCall(client.userId, {
+      ...body,
+      fromUserId: client.userId,
+    });
     if (!auth.ok) return auth;
     const session = auth.session!;
     this.server.to(this.userRoom(session.callerId)).emit('call:rejected', {
@@ -240,12 +280,17 @@ export class ChatGateway implements OnGatewayConnection {
   }
 
   @SubscribeMessage('call:cancel')
-  cancelCall(
+  async cancelCall(
     @ConnectedSocket() client: AuthedSocket,
     @MessageBody() body: CallIdPayload,
   ) {
+    if (!(await this.requireAuth(client))) return { ok: false, error: 'unauthorized' };
     this.flushExpiredSessions();
-    const auth = this.callLogic.evaluateCalleeAction(client.userId, body, 'participant');
+    const auth = this.callLogic.evaluateCalleeAction(
+      client.userId,
+      { ...body, fromUserId: client.userId },
+      'participant',
+    );
     if (!auth.ok) return auth;
     const session = auth.session!;
     if (session.state !== 'ringing') {
@@ -262,12 +307,17 @@ export class ChatGateway implements OnGatewayConnection {
   }
 
   @SubscribeMessage('call:end')
-  endCall(
+  async endCall(
     @ConnectedSocket() client: AuthedSocket,
     @MessageBody() body: CallIdPayload,
   ) {
+    if (!(await this.requireAuth(client))) return { ok: false, error: 'unauthorized' };
     this.flushExpiredSessions();
-    const auth = this.callLogic.evaluateCalleeAction(client.userId, body, 'participant');
+    const auth = this.callLogic.evaluateCalleeAction(
+      client.userId,
+      { ...body, fromUserId: client.userId },
+      'participant',
+    );
     if (!auth.ok) return auth;
     const session = auth.session!;
     this.notifyCallEnded(body.callId, session.callerId, session.calleeId, 'hangup');
@@ -275,11 +325,15 @@ export class ChatGateway implements OnGatewayConnection {
   }
 
   @SubscribeMessage('call:offer')
-  relayOffer(
+  async relayOffer(
     @ConnectedSocket() client: AuthedSocket,
     @MessageBody() body: CallSdpPayload,
   ) {
-    const result = this.callLogic.evaluateSdpRelay(client.userId, body);
+    if (!(await this.requireAuth(client))) return { ok: false, error: 'unauthorized' };
+    const result = this.callLogic.evaluateSdpRelay(client.userId, {
+      ...body,
+      fromUserId: client.userId,
+    });
     if (!result.ok) return result;
     this.server.to(this.userRoom(result.peerId!)).emit('call:offer', {
       callId: body.callId,
@@ -290,11 +344,15 @@ export class ChatGateway implements OnGatewayConnection {
   }
 
   @SubscribeMessage('call:answer')
-  relayAnswer(
+  async relayAnswer(
     @ConnectedSocket() client: AuthedSocket,
     @MessageBody() body: CallSdpPayload,
   ) {
-    const result = this.callLogic.evaluateSdpRelay(client.userId, body);
+    if (!(await this.requireAuth(client))) return { ok: false, error: 'unauthorized' };
+    const result = this.callLogic.evaluateSdpRelay(client.userId, {
+      ...body,
+      fromUserId: client.userId,
+    });
     if (!result.ok) return result;
     this.server.to(this.userRoom(result.peerId!)).emit('call:answer', {
       callId: body.callId,
@@ -305,11 +363,15 @@ export class ChatGateway implements OnGatewayConnection {
   }
 
   @SubscribeMessage('call:ice')
-  relayIce(
+  async relayIce(
     @ConnectedSocket() client: AuthedSocket,
     @MessageBody() body: CallIcePayload,
   ) {
-    const result = this.callLogic.evaluateIceRelay(client.userId, body);
+    if (!(await this.requireAuth(client))) return { ok: false, error: 'unauthorized' };
+    const result = this.callLogic.evaluateIceRelay(client.userId, {
+      ...body,
+      fromUserId: client.userId,
+    });
     if (!result.ok) return result;
     this.server.to(this.userRoom(result.peerId!)).emit('call:ice', {
       callId: body.callId,

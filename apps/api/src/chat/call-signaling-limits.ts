@@ -85,10 +85,14 @@ export function jsonSize(value: unknown): number {
   }
 }
 
+const CALL_ID_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** callId é sempre UUID emitido pelo servidor (anti-squatting). */
 export function isValidCallId(callId: string): boolean {
   return (
     typeof callId === 'string' &&
-    callId.length > 0 &&
-    callId.length <= CALL_SIGNAL_LIMITS.maxCallIdLen
+    callId.length <= CALL_SIGNAL_LIMITS.maxCallIdLen &&
+    CALL_ID_UUID.test(callId)
   );
 }

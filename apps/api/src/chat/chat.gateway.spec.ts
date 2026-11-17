@@ -2,13 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { CallSessionStore } from './call-session.store.js';
 import { ChatCallGatewayLogic } from './chat-call-gateway.logic.js';
 import { CALL_SIGNAL_LIMITS } from './call-signaling-limits.js';
+import type { CallIcePayload, CallInvitePayload, CallSdpPayload } from './call-signaling.js';
+
+const CID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+const CID_B = 'bbbbbbbb-bbbb-4ccc-8ddd-ffffffffffff';
 
 describe('ChatCallGatewayLogic', () => {
   function logicWithSession(
     state: 'ringing' | 'active',
     callerId = '1',
     calleeId = '2',
-    callId = 'call-1',
+    callId = CID,
   ) {
     const store = new CallSessionStore();
     store.create({
@@ -21,38 +25,34 @@ describe('ChatCallGatewayLogic', () => {
     return { store, logic: new ChatCallGatewayLogic(store) };
   }
 
+  it('rejects invite sem fromUserId', () => {
+    const logic = new ChatCallGatewayLogic(new CallSessionStore());
+    const result = logic.evaluateInvite(
+      '1',
+      { callId: CID, calleeUserId: '2' } as CallInvitePayload,
+      true,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe('unauthorized');
+  });
+
   it('rejects invite when sender is unauthorized', () => {
     const logic = new ChatCallGatewayLogic(new CallSessionStore());
     const result = logic.evaluateInvite(undefined, {
-      callId: 'c1',
+      callId: 'bad-id',
       calleeUserId: '2',
       fromUserId: '1',
-    }, true, true);
+    }, true);
     expect(result).toEqual({ ok: false, error: 'unauthorized' });
   });
 
   it('rejects invite when callee is offline', () => {
     const logic = new ChatCallGatewayLogic(new CallSessionStore());
     const result = logic.evaluateInvite('1', {
-      callId: 'c1',
+      callId: CID,
       calleeUserId: '2',
       fromUserId: '1',
-    }, false, true);
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error).toBe('offline');
-      expect(result.emitToCaller?.event).toBe('call:unavailable');
-    }
-  });
-
-  it('rejects invite when callee is unknown to the gateway', () => {
-    const logic = new ChatCallGatewayLogic(new CallSessionStore());
-    const result = logic.evaluateInvite(
-      '1',
-      { callId: 'c1', calleeUserId: '2', fromUserId: '1' },
-      true,
-      false,
-    );
+    }, false);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error).toBe('offline');
@@ -61,12 +61,12 @@ describe('ChatCallGatewayLogic', () => {
   });
 
   it('rejects invite when callee is busy', () => {
-    const { logic } = logicWithSession('active', '9', '2', 'busy-call');
+    const { logic } = logicWithSession('active', '9', '2', CID_B);
     const result = logic.evaluateInvite('1', {
-      callId: 'new-call',
+      callId: CID_B,
       calleeUserId: '2',
       fromUserId: '1',
-    }, true, true);
+    }, true);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error).toBe('busy');
@@ -77,17 +77,26 @@ describe('ChatCallGatewayLogic', () => {
   it('rejects sdp relay for forbidden participant', () => {
     const { logic } = logicWithSession('active');
     const result = logic.evaluateSdpRelay('99', {
-      callId: 'call-1',
+      callId: CID,
       fromUserId: '99',
       sdp: { type: 'offer', sdp: 'v=0' },
     });
     expect(result).toEqual({ ok: false, error: 'forbidden' });
   });
 
+  it('evaluateAccept only allows ringing callee', () => {
+    const { logic } = logicWithSession('ringing');
+    expect(logic.evaluateAccept('2', { callId: CID, fromUserId: '2' }).ok).toBe(true);
+    const active = logicWithSession('active');
+    expect(active.logic.evaluateAccept('2', { callId: CID, fromUserId: '2' }).ok).toBe(
+      false,
+    );
+  });
+
   it('rejects call reject when session is already active', () => {
     const { logic } = logicWithSession('active');
     const result = logic.evaluateRejectCall('2', {
-      callId: 'call-1',
+      callId: CID,
       fromUserId: '2',
     });
     expect(result).toEqual({ ok: false, error: 'not_found' });
@@ -97,7 +106,7 @@ describe('ChatCallGatewayLogic', () => {
     const { logic } = logicWithSession('ringing');
     const result = logic.evaluateCalleeAction(
       '1',
-      { callId: 'call-1', fromUserId: '1' },
+      { callId: CID, fromUserId: '1' },
       'callee',
     );
     expect(result).toEqual({ ok: false, error: 'forbidden' });
@@ -108,7 +117,7 @@ describe('ChatCallGatewayLogic', () => {
     const outcome = logic.endCallsOnUserDisconnect('1');
     expect(outcome.ended).toHaveLength(1);
     expect(outcome.ended[0]?.reason).toBe('peer_disconnected');
-    expect(store.get('call-1')).toBeUndefined();
+    expect(store.get(CID)).toBeUndefined();
   });
 
   it('rate-limits burst ice events', () => {
@@ -116,7 +125,7 @@ describe('ChatCallGatewayLogic', () => {
     let rateLimited = false;
     for (let i = 0; i < CALL_SIGNAL_LIMITS.icePerWindow + 5; i++) {
       const result = logic.evaluateIceRelay('1', {
-        callId: 'call-1',
+        callId: CID,
         fromUserId: '1',
         candidate: { candidate: `cand-${i}` },
       });
@@ -133,12 +142,11 @@ describe('ChatCallGatewayLogic', () => {
     const result = logic.evaluateInvite(
       '1',
       {
-        callId: 'c1',
+        callId: 'bad-id',
         calleeUserId: '2',
         fromUserId: '1',
         extra: 'x'.repeat(CALL_SIGNAL_LIMITS.maxInviteJsonChars),
       } as Parameters<ChatCallGatewayLogic['evaluateInvite']>[1],
-      true,
       true,
     );
     expect(result).toEqual({ ok: false, error: 'payload_too_large' });
@@ -151,11 +159,10 @@ describe('ChatCallGatewayLogic', () => {
       const result = logic.evaluateInvite(
         '1',
         {
-          callId: `call-${i}`,
+          callId: `aaaaaaaa-bbbb-4ccc-8ddd-${String(i).padStart(12, '0')}`,
           calleeUserId: '2',
           fromUserId: '1',
         },
-        true,
         true,
       );
       if (!result.ok && result.error === 'rate_limited') {
@@ -171,13 +178,13 @@ describe('ChatCallGatewayLogic', () => {
     const outcome = logic.endCallsOnUserDisconnect('2');
     expect(outcome.ended).toHaveLength(1);
     expect(outcome.ended[0]?.reason).toBe('peer_disconnected');
-    expect(store.get('call-1')).toBeUndefined();
+    expect(store.get(CID)).toBeUndefined();
   });
 
   it('rejects sdp relay when unauthorized', () => {
     const { logic } = logicWithSession('active');
     const result = logic.evaluateSdpRelay(undefined, {
-      callId: 'call-1',
+      callId: CID,
       fromUserId: '1',
       sdp: { type: 'offer', sdp: 'v=0' },
     });
@@ -190,7 +197,7 @@ describe('ChatCallGatewayLogic', () => {
     for (let i = 0; i < CALL_SIGNAL_LIMITS.controlPerWindow + 2; i++) {
       const result = logic.evaluateCalleeAction(
         '2',
-        { callId: 'call-1', fromUserId: '2' },
+        { callId: CID, fromUserId: '2' },
         'callee',
       );
       if (!result.ok && result.error === 'rate_limited') {
@@ -207,17 +214,19 @@ describe('ChatCallGatewayLogic', () => {
     for (let i = 0; i < CALL_SIGNAL_LIMITS.inviteToCalleePerWindow; i++) {
       const ok = logic.evaluateInvite(
         '1',
-        { callId: `c-${i}`, calleeUserId: '2', fromUserId: '1' },
-        true,
+        {
+          callId: `cccccccc-bbbb-4ccc-8ddd-${String(i).padStart(12, '0')}`,
+          calleeUserId: '2',
+          fromUserId: '1',
+        },
         true,
       );
       expect(ok.ok).toBe(true);
-      store.remove(`c-${i}`);
+      store.remove(`cccccccc-bbbb-4ccc-8ddd-${String(i).padStart(12, '0')}`);
     }
     const blocked = logic.evaluateInvite(
       '1',
-      { callId: 'blocked', calleeUserId: '2', fromUserId: '1' },
-      true,
+      { callId: 'dddddddd-bbbb-4ccc-8ddd-000000000001', calleeUserId: '2', fromUserId: '1' },
       true,
     );
     expect(blocked).toEqual({ ok: false, error: 'rate_limited' });
@@ -227,7 +236,7 @@ describe('ChatCallGatewayLogic', () => {
     const store = new CallSessionStore();
     const logic = new ChatCallGatewayLogic(store);
     store.create({
-      callId: 'old-ring',
+      callId: 'eeeeeeee-bbbb-4ccc-8ddd-000000000001',
       callerId: '1',
       calleeId: '2',
       state: 'ringing',
@@ -236,7 +245,23 @@ describe('ChatCallGatewayLogic', () => {
     const outcome = logic.expireStaleRingingSessions();
     expect(outcome.expired).toHaveLength(1);
     expect(outcome.expired[0]?.reason).toBe('ring_timeout');
-    expect(store.get('old-ring')).toBeUndefined();
+    expect(store.get('eeeeeeee-bbbb-4ccc-8ddd-000000000001')).toBeUndefined();
+  });
+
+  it('rejeita relay SDP/ICE sem fromUserId em sessão active', () => {
+    const { logic } = logicWithSession('active');
+    const sdp = logic.evaluateSdpRelay('1', {
+      callId: CID,
+      sdp: { type: 'offer', sdp: 'v=0' },
+    } as CallSdpPayload);
+    expect(sdp.ok).toBe(false);
+    if (!sdp.ok) expect(sdp.error).toBe('unauthorized');
+    const ice = logic.evaluateIceRelay('1', {
+      callId: CID,
+      candidate: { candidate: 'x' },
+    } as CallIcePayload);
+    expect(ice.ok).toBe(false);
+    if (!ice.ok) expect(ice.error).toBe('unauthorized');
   });
 
   it('expires stale active sessions by TTL', () => {
@@ -244,7 +269,7 @@ describe('ChatCallGatewayLogic', () => {
     const logic = new ChatCallGatewayLogic(store);
     const started = Date.now() - CALL_SIGNAL_LIMITS.activeTtlMs - 1;
     store.create({
-      callId: 'old-active',
+      callId: 'ffffffff-bbbb-4ccc-8ddd-000000000001',
       callerId: '1',
       calleeId: '2',
       state: 'active',
@@ -254,6 +279,6 @@ describe('ChatCallGatewayLogic', () => {
     const outcome = logic.expireStaleActiveSessions();
     expect(outcome.expired).toHaveLength(1);
     expect(outcome.expired[0]?.reason).toBe('active_timeout');
-    expect(store.get('old-active')).toBeUndefined();
+    expect(store.get('ffffffff-bbbb-4ccc-8ddd-000000000001')).toBeUndefined();
   });
 });

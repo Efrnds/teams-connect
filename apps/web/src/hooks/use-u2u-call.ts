@@ -22,13 +22,6 @@ type Options = {
   ringTimeoutMs?: number;
 };
 
-function newCallId(): string {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return `call-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
 export function useU2uCall({
   socket,
   selfUserId,
@@ -49,10 +42,20 @@ export function useU2uCall({
   const isCallerRef = useRef(false);
   const phaseRef = useRef<CallPhase>(phase);
   const peerRef = useRef(peer);
+  const selfUserIdRef = useRef(selfUserId);
 
   callIdRef.current = callId;
   phaseRef.current = phase;
   peerRef.current = peer;
+  selfUserIdRef.current = selfUserId;
+
+  const withSender = useCallback(
+    <T extends Record<string, unknown>>(payload: T): T & { fromUserId: string } => ({
+      ...payload,
+      fromUserId: selfUserIdRef.current!,
+    }),
+    [],
+  );
 
   useCallRingtone(phase === 'incoming');
 
@@ -102,31 +105,34 @@ export function useU2uCall({
     };
     pc.onicecandidate = (event) => {
       const id = callIdRef.current;
-      if (!socket || !id) return;
-      socket.emit('call:ice', {
-        callId: id,
-        candidate: event.candidate
-          ? {
-              candidate: event.candidate.candidate,
-              sdpMid: event.candidate.sdpMid,
-              sdpMLineIndex: event.candidate.sdpMLineIndex,
-            }
-          : null,
-      });
+      if (!socket || !id || !selfUserIdRef.current) return;
+      socket.emit(
+        'call:ice',
+        withSender({
+          callId: id,
+          candidate: event.candidate
+            ? {
+                candidate: event.candidate.candidate,
+                sdpMid: event.candidate.sdpMid,
+                sdpMLineIndex: event.candidate.sdpMLineIndex,
+              }
+            : null,
+        }),
+      );
     };
     pcRef.current = pc;
     return pc;
-  }, [authToken, socket]);
+  }, [authToken, socket, withSender]);
 
   const failMedia = useCallback(
     (err: unknown) => {
       const id = callIdRef.current;
       if (socket && id) {
-        socket.emit('call:end', { callId: id });
+        socket.emit('call:end', withSender({ callId: id }));
       }
       resetCall(messageForMediaError(err));
     },
-    [resetCall, socket],
+    [resetCall, socket, withSender],
   );
 
   const startOffer = useCallback(async () => {
@@ -136,19 +142,19 @@ export function useU2uCall({
       const pc = await ensurePeerConnection();
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      socket.emit('call:offer', { callId: callIdRef.current, sdp: offer });
+      socket.emit('call:offer', withSender({ callId: callIdRef.current, sdp: offer }));
     } catch (err) {
       failMedia(err);
     }
-  }, [ensurePeerConnection, failMedia, socket]);
+  }, [ensurePeerConnection, failMedia, socket, withSender]);
 
   const hangUp = useCallback(() => {
     const id = callIdRef.current;
     if (socket && id) {
-      socket.emit('call:end', { callId: id });
+      socket.emit('call:end', withSender({ callId: id }));
     }
     resetCall();
-  }, [resetCall, socket]);
+  }, [resetCall, socket, withSender]);
 
   const startCall = useCallback(
     (calleeUserId: string) => {
@@ -158,9 +164,8 @@ export function useU2uCall({
         return;
       }
       if (phase !== 'idle') return;
-      const id = newCallId();
       isCallerRef.current = true;
-      callIdRef.current = id;
+      callIdRef.current = null;
       setPeer({
         userId: calleeUserId,
         displayName: resolveDisplayName(calleeUserId),
@@ -169,68 +174,72 @@ export function useU2uCall({
       setStatusMessage('Verificando disponibilidade…');
       socket.emit(
         'call:invite',
-        { callId: id, calleeUserId },
-        (ack?: { ok?: boolean; error?: string }) => {
-          if (callIdRef.current !== id) return;
-          if (!shouldStartRingingAfterInvite(ack)) {
+        { calleeUserId, fromUserId: selfUserId },
+        (ack?: { ok?: boolean; error?: string; callId?: string }) => {
+          const id = ack?.callId ?? callIdRef.current;
+          if (!shouldStartRingingAfterInvite(ack) || !id) {
             const msg = messageAfterInviteAck(ack);
             resetCall(msg ?? undefined);
             return;
           }
+          callIdRef.current = id;
           setCallId(id);
           setPhase('outgoing');
           setStatusMessage(null);
           clearRingTimer();
           ringTimerRef.current = setTimeout(() => {
             if (callIdRef.current === id) {
-              socket.emit('call:cancel', { callId: id });
+              socket.emit('call:cancel', withSender({ callId: id }));
               resetCall('Sem resposta.');
             }
           }, ringTimeoutMs);
         },
       );
     },
-    [clearRingTimer, phase, resetCall, resolveDisplayName, ringTimeoutMs, selfUserId, socket],
+    [clearRingTimer, phase, resetCall, resolveDisplayName, ringTimeoutMs, selfUserId, socket, withSender],
   );
 
-  const acceptCall = useCallback(async () => {
+  const acceptCall = useCallback(() => {
     if (!socket || !callIdRef.current) return;
     clearRingTimer();
     setPhase('connecting');
-    try {
-      await ensurePeerConnection();
-      socket.emit('call:accept', { callId: callIdRef.current });
-    } catch (err) {
-      const id = callIdRef.current;
-      if (socket && id) {
-        socket.emit('call:reject', { callId: id });
-      }
-      resetCall(messageForMediaError(err));
-    }
-  }, [clearRingTimer, ensurePeerConnection, resetCall, socket]);
+    const id = callIdRef.current;
+    socket.emit(
+      'call:accept',
+      withSender({ callId: id }),
+      (ack?: { ok?: boolean; error?: string }) => {
+        if (ack?.ok) return;
+        resetCall(
+          ack?.error === 'unauthorized'
+            ? 'Sessão expirada. Entre novamente.'
+            : 'Não foi possível atender a chamada.',
+        );
+      },
+    );
+  }, [clearRingTimer, resetCall, socket, withSender]);
 
   const rejectCall = useCallback(() => {
     const id = callIdRef.current;
     if (socket && id) {
-      socket.emit('call:reject', { callId: id });
+      socket.emit('call:reject', withSender({ callId: id }));
     }
     resetCall();
-  }, [resetCall, socket]);
+  }, [resetCall, socket, withSender]);
 
   const cancelOutgoing = useCallback(() => {
     const id = callIdRef.current;
     if (socket && id) {
-      socket.emit('call:cancel', { callId: id });
+      socket.emit('call:cancel', withSender({ callId: id }));
     }
     resetCall();
-  }, [resetCall, socket]);
+  }, [resetCall, socket, withSender]);
 
   useEffect(() => {
     if (!socket) return;
 
     const onIncoming = (payload: { callId: string; callerUserId: string }) => {
       if (shouldRejectIncomingWhileBusy(phaseRef.current)) {
-        socket.emit('call:reject', { callId: payload.callId });
+        socket.emit('call:reject', withSender({ callId: payload.callId }));
         return;
       }
       setCallId(payload.callId);
@@ -289,12 +298,12 @@ export function useU2uCall({
         await pc.setRemoteDescription(payload.sdp);
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        socket.emit('call:answer', { callId: payload.callId, sdp: answer });
+        socket.emit('call:answer', withSender({ callId: payload.callId, sdp: answer }));
         setPhase('active');
       } catch (err) {
         const id = callIdRef.current;
         if (socket && id) {
-          socket.emit('call:end', { callId: id });
+          socket.emit('call:end', withSender({ callId: id }));
         }
         resetCall(messageForMediaError(err));
       }
@@ -360,6 +369,7 @@ export function useU2uCall({
     socket,
     failMedia,
     startOffer,
+    withSender,
   ]);
 
   useEffect(() => {

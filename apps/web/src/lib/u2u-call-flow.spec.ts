@@ -6,18 +6,19 @@ import {
   messageForMediaError,
   shouldRejectIncomingWhileBusy,
   shouldStartRingingAfterInvite,
-} from '../../../web/src/lib/u2u-call-flow.js';
+} from './u2u-call-flow';
 
-describe('u2u-call-flow (web client)', () => {
+describe('u2u-call-flow', () => {
   it('só inicia ringing após ack ok', () => {
-    expect(shouldStartRingingAfterInvite({ ok: true })).toBe(true);
+    expect(
+      shouldStartRingingAfterInvite({ ok: true, callId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' }),
+    ).toBe(true);
+    expect(shouldStartRingingAfterInvite({ ok: true })).toBe(false);
     expect(shouldStartRingingAfterInvite({ ok: false, error: 'offline' })).toBe(false);
   });
 
   it('mapeia erros de invite', () => {
-    expect(messageAfterInviteAck({ ok: false, error: 'offline' })).toBe(
-      'Usuário indisponível.',
-    );
+    expect(messageAfterInviteAck({ ok: false, error: 'offline' })).toBe('Usuário indisponível.');
     expect(messageAfterInviteAck({ ok: false, error: 'busy' })).toBe('Contato ocupado.');
   });
 
@@ -32,15 +33,16 @@ describe('u2u-call-flow (web client)', () => {
     expect(shouldRejectIncomingWhileBusy('active')).toBe(true);
   });
 
-  it('valida remetente de sinalização WebRTC', () => {
+  it('ignora SDP/ICE sem fromUserId', () => {
     expect(assertSignalingFromPeer('2', '2')).toBe(true);
     expect(assertSignalingFromPeer('2', '9')).toBe(false);
-    expect(assertSignalingFromPeer(undefined, '9')).toBe(true);
+    expect(assertSignalingFromPeer(undefined, '9')).toBe(false);
+    expect(assertSignalingFromPeer('2', undefined)).toBe(false);
   });
 
   it('mapeia erro de microfone', () => {
-    expect(
-      messageForMediaError(new DOMException('blocked', 'NotAllowedError')),
-    ).toContain('bloqueado');
+    expect(messageForMediaError(new DOMException('blocked', 'NotAllowedError'))).toContain(
+      'bloqueado',
+    );
   });
 });
