@@ -29,7 +29,7 @@ rollback() {
   git -C "$DEPLOY_PATH" fetch --all --prune
   git -C "$DEPLOY_PATH" checkout "$SHA_BEFORE"
   git -C "$DEPLOY_PATH" reset --hard "$SHA_BEFORE"
-  docker compose -f "$DEPLOY_PATH/$COMPOSE_FILE" --env-file "$DEPLOY_PATH/$ENV_FILE" up -d --remove-orphans
+  docker compose -f "$DEPLOY_PATH/$COMPOSE_FILE" --env-file "$DEPLOY_PATH/$ENV_FILE" up -d --build --remove-orphans
 }
 
 smoke() {
