@@ -12,9 +12,17 @@ const WEB_LOGIN = resolve(WEB_ROOT, 'src/app/login/page.tsx');
 
 /** Garante que o PR entrega wiring ponta a ponta (não só lógica isolada). */
 describe('u2u wiring no repositório', () => {
-  it('AppModule importa ChatModule', () => {
+  it('AppModule importa ChatModule (não stub vazio)', () => {
     const src = readFileSync(resolve(API_SRC, 'app.module.ts'), 'utf8');
     expect(src).toContain('ChatModule');
+    expect(src).not.toMatch(/imports:\s*\[\s*\]/);
+    expect(src).toContain('AuthModule');
+  });
+
+  it('home web não é template Next.js padrão', () => {
+    const home = readFileSync(WEB_HOME, 'utf8');
+    expect(home).not.toContain('Get started by editing');
+    expect(home).toMatch(/\/app|getToken|router\.replace/);
   });
 
   it('web /app renderiza ChatShell (botão Ligar)', () => {
