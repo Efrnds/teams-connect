@@ -1,17 +1,4 @@
 node_modules
-# Keep environment variables out of version control
+dist
 .env
-
-/generated/prisma
-
-/generated/prisma
-
-# factory local (raiz do monorepo)
-.agents-skills/
-.claude/
-.codex/
-.logs/
-handoff/
-AGENTS.md
-RTK.md
-CLAUDE.md
+src/generated

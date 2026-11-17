@@ -1,47 +1,46 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ensureSocketJwtValid, type AuthedSocket } from './chat-socket-auth.js';
 
 describe('ensureSocketJwtValid', () => {
-  const secret = 'test-secret';
+  const secret = 'test-secret-at-least-32-characters-long';
 
-  beforeEach(() => {
-    process.env.JWT_ACCESS_SECRET = secret;
-  });
-
-  it('rejeita socket sem token', async () => {
-    const client = {
-      userId: '1',
+  function client(overrides: Partial<AuthedSocket> = {}): AuthedSocket {
+    return {
+      userId: '42',
+      authToken: 'tok',
       disconnect: vi.fn(),
+      ...overrides,
     } as unknown as AuthedSocket;
+  }
+
+  it('desconecta sem userId ou token', async () => {
+    const c = client({ userId: undefined, authToken: undefined });
     const jwt = { verifyAsync: vi.fn() };
-    expect(await ensureSocketJwtValid(client, jwt as never)).toBe(false);
-    expect(client.disconnect).toHaveBeenCalled();
+    await expect(ensureSocketJwtValid(c, jwt as never)).resolves.toBe(false);
+    expect(c.disconnect).toHaveBeenCalled();
   });
 
-  it('aceita quando verify bate com userId', async () => {
-    const client = {
-      userId: '1',
-      authToken: 'tok',
-      disconnect: vi.fn(),
-    } as unknown as AuthedSocket;
+  it('revalida JWT a cada chamada', async () => {
+    const prev = process.env.JWT_ACCESS_SECRET;
+    process.env.JWT_ACCESS_SECRET = secret;
+    const c = client();
     const jwt = {
-      verifyAsync: vi.fn().mockResolvedValue({ sub: '1' }),
+      verifyAsync: vi.fn().mockResolvedValue({ sub: '42' }),
     };
-    expect(await ensureSocketJwtValid(client, jwt as never)).toBe(true);
+    await expect(ensureSocketJwtValid(c, jwt as never)).resolves.toBe(true);
+    expect(jwt.verifyAsync).toHaveBeenCalledWith('tok', { secret });
+    process.env.JWT_ACCESS_SECRET = prev;
   });
 
-  it('derruba socket quando JWT expirou', async () => {
+  it('desconecta quando verify falha', async () => {
+    const prev = process.env.JWT_ACCESS_SECRET;
+    process.env.JWT_ACCESS_SECRET = secret;
+    const c = client();
     const onDisconnect = vi.fn();
-    const client = {
-      userId: '1',
-      authToken: 'tok',
-      disconnect: vi.fn(),
-    } as unknown as AuthedSocket;
-    const jwt = {
-      verifyAsync: vi.fn().mockRejectedValue(new Error('expired')),
-    };
-    expect(await ensureSocketJwtValid(client, jwt as never, onDisconnect)).toBe(false);
-    expect(onDisconnect).toHaveBeenCalledWith('1');
-    expect(client.disconnect).toHaveBeenCalled();
+    const jwt = { verifyAsync: vi.fn().mockRejectedValue(new Error('expired')) };
+    await expect(ensureSocketJwtValid(c, jwt as never, onDisconnect)).resolves.toBe(false);
+    expect(onDisconnect).toHaveBeenCalledWith('42');
+    expect(c.disconnect).toHaveBeenCalled();
+    process.env.JWT_ACCESS_SECRET = prev;
   });
 });

@@ -56,6 +56,15 @@ export function assertSenderMatches(
   return true;
 }
 
+/** Eventos `call:*` exigem `fromUserId` explícito e igual ao JWT do socket. */
+export function assertCallSenderMatches(
+  socketUserId: string | undefined,
+  declaredFromUserId: string | undefined,
+): socketUserId is string {
+  if (!socketUserId || !declaredFromUserId) return false;
+  return socketUserId === declaredFromUserId;
+}
+
 export function assertCalleeNotSelf(
   callerId: string,
   calleeUserId: string,

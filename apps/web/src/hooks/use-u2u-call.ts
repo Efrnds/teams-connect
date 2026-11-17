@@ -42,10 +42,20 @@ export function useU2uCall({
   const isCallerRef = useRef(false);
   const phaseRef = useRef<CallPhase>(phase);
   const peerRef = useRef(peer);
+  const selfUserIdRef = useRef(selfUserId);
 
   callIdRef.current = callId;
   phaseRef.current = phase;
   peerRef.current = peer;
+  selfUserIdRef.current = selfUserId;
+
+  const withSender = useCallback(
+    <T extends Record<string, unknown>>(payload: T): T & { fromUserId: string } => ({
+      ...payload,
+      fromUserId: selfUserIdRef.current!,
+    }),
+    [],
+  );
 
   useCallRingtone(phase === 'incoming');
 
@@ -95,31 +105,34 @@ export function useU2uCall({
     };
     pc.onicecandidate = (event) => {
       const id = callIdRef.current;
-      if (!socket || !id) return;
-      socket.emit('call:ice', {
-        callId: id,
-        candidate: event.candidate
-          ? {
-              candidate: event.candidate.candidate,
-              sdpMid: event.candidate.sdpMid,
-              sdpMLineIndex: event.candidate.sdpMLineIndex,
-            }
-          : null,
-      });
+      if (!socket || !id || !selfUserIdRef.current) return;
+      socket.emit(
+        'call:ice',
+        withSender({
+          callId: id,
+          candidate: event.candidate
+            ? {
+                candidate: event.candidate.candidate,
+                sdpMid: event.candidate.sdpMid,
+                sdpMLineIndex: event.candidate.sdpMLineIndex,
+              }
+            : null,
+        }),
+      );
     };
     pcRef.current = pc;
     return pc;
-  }, [authToken, socket]);
+  }, [authToken, socket, withSender]);
 
   const failMedia = useCallback(
     (err: unknown) => {
       const id = callIdRef.current;
       if (socket && id) {
-        socket.emit('call:end', { callId: id });
+        socket.emit('call:end', withSender({ callId: id }));
       }
       resetCall(messageForMediaError(err));
     },
-    [resetCall, socket],
+    [resetCall, socket, withSender],
   );
 
   const startOffer = useCallback(async () => {
@@ -129,19 +142,19 @@ export function useU2uCall({
       const pc = await ensurePeerConnection();
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      socket.emit('call:offer', { callId: callIdRef.current, sdp: offer });
+      socket.emit('call:offer', withSender({ callId: callIdRef.current, sdp: offer }));
     } catch (err) {
       failMedia(err);
     }
-  }, [ensurePeerConnection, failMedia, socket]);
+  }, [ensurePeerConnection, failMedia, socket, withSender]);
 
   const hangUp = useCallback(() => {
     const id = callIdRef.current;
     if (socket && id) {
-      socket.emit('call:end', { callId: id });
+      socket.emit('call:end', withSender({ callId: id }));
     }
     resetCall();
-  }, [resetCall, socket]);
+  }, [resetCall, socket, withSender]);
 
   const startCall = useCallback(
     (calleeUserId: string) => {
@@ -176,14 +189,14 @@ export function useU2uCall({
           clearRingTimer();
           ringTimerRef.current = setTimeout(() => {
             if (callIdRef.current === id) {
-              socket.emit('call:cancel', { callId: id });
+              socket.emit('call:cancel', withSender({ callId: id }));
               resetCall('Sem resposta.');
             }
           }, ringTimeoutMs);
         },
       );
     },
-    [clearRingTimer, phase, resetCall, resolveDisplayName, ringTimeoutMs, selfUserId, socket],
+    [clearRingTimer, phase, resetCall, resolveDisplayName, ringTimeoutMs, selfUserId, socket, withSender],
   );
 
   const acceptCall = useCallback(async () => {
@@ -192,38 +205,38 @@ export function useU2uCall({
     setPhase('connecting');
     try {
       await ensurePeerConnection();
-      socket.emit('call:accept', { callId: callIdRef.current });
+      socket.emit('call:accept', withSender({ callId: callIdRef.current }));
     } catch (err) {
       const id = callIdRef.current;
       if (socket && id) {
-        socket.emit('call:reject', { callId: id });
+        socket.emit('call:reject', withSender({ callId: id }));
       }
       resetCall(messageForMediaError(err));
     }
-  }, [clearRingTimer, ensurePeerConnection, resetCall, socket]);
+  }, [clearRingTimer, ensurePeerConnection, resetCall, socket, withSender]);
 
   const rejectCall = useCallback(() => {
     const id = callIdRef.current;
     if (socket && id) {
-      socket.emit('call:reject', { callId: id });
+      socket.emit('call:reject', withSender({ callId: id }));
     }
     resetCall();
-  }, [resetCall, socket]);
+  }, [resetCall, socket, withSender]);
 
   const cancelOutgoing = useCallback(() => {
     const id = callIdRef.current;
     if (socket && id) {
-      socket.emit('call:cancel', { callId: id });
+      socket.emit('call:cancel', withSender({ callId: id }));
     }
     resetCall();
-  }, [resetCall, socket]);
+  }, [resetCall, socket, withSender]);
 
   useEffect(() => {
     if (!socket) return;
 
     const onIncoming = (payload: { callId: string; callerUserId: string }) => {
       if (shouldRejectIncomingWhileBusy(phaseRef.current)) {
-        socket.emit('call:reject', { callId: payload.callId });
+        socket.emit('call:reject', withSender({ callId: payload.callId }));
         return;
       }
       setCallId(payload.callId);
@@ -282,12 +295,12 @@ export function useU2uCall({
         await pc.setRemoteDescription(payload.sdp);
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        socket.emit('call:answer', { callId: payload.callId, sdp: answer });
+        socket.emit('call:answer', withSender({ callId: payload.callId, sdp: answer }));
         setPhase('active');
       } catch (err) {
         const id = callIdRef.current;
         if (socket && id) {
-          socket.emit('call:end', { callId: id });
+          socket.emit('call:end', withSender({ callId: id }));
         }
         resetCall(messageForMediaError(err));
       }
@@ -353,6 +366,7 @@ export function useU2uCall({
     socket,
     failMedia,
     startOffer,
+    withSender,
   ]);
 
   useEffect(() => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CallSessionStore } from './call-session.store.js';
 import { ChatCallGatewayLogic } from './chat-call-gateway.logic.js';
 import { CALL_SIGNAL_LIMITS } from './call-signaling-limits.js';
+import type { CallInvitePayload } from './call-signaling.js';
 
 const CID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const CID_B = 'bbbbbbbb-bbbb-4ccc-8ddd-ffffffffffff';
@@ -23,6 +24,17 @@ describe('ChatCallGatewayLogic', () => {
     });
     return { store, logic: new ChatCallGatewayLogic(store) };
   }
+
+  it('rejects invite sem fromUserId', () => {
+    const logic = new ChatCallGatewayLogic(new CallSessionStore());
+    const result = logic.evaluateInvite(
+      '1',
+      { callId: CID, calleeUserId: '2' } as CallInvitePayload,
+      true,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe('unauthorized');
+  });
 
   it('rejects invite when sender is unauthorized', () => {
     const logic = new ChatCallGatewayLogic(new CallSessionStore());

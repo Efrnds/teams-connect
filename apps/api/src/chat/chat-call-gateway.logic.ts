@@ -1,7 +1,7 @@
 import {
   assertCalleeForSession,
   assertCalleeNotSelf,
-  assertSenderMatches,
+  assertCallSenderMatches,
   isSessionParticipant,
   type CallIcePayload,
   type CallIdPayload,
@@ -117,7 +117,7 @@ export class ChatCallGatewayLogic {
   ): InviteOutcome {
     this.callSessions.expireStaleRinging();
     this.callSessions.expireStaleActive();
-    if (!assertSenderMatches(clientUserId, body.fromUserId) || !body.calleeUserId) {
+    if (!assertCallSenderMatches(clientUserId, body.fromUserId) || !body.calleeUserId) {
       return { ok: false, error: 'unauthorized' };
     }
     const callId = body.callId;
@@ -200,7 +200,7 @@ export class ChatCallGatewayLogic {
     clientUserId: string | undefined,
     body: CallSdpPayload,
   ): SimpleCallOutcome & { peerId?: string; relay?: { callId: string; sdp: CallSdpPayload['sdp']; fromUserId: string } } {
-    if (!assertSenderMatches(clientUserId, body.fromUserId) || !body.callId) {
+    if (!assertCallSenderMatches(clientUserId, body.fromUserId) || !body.callId) {
       return { ok: false, error: 'unauthorized' };
     }
     if (
@@ -234,7 +234,7 @@ export class ChatCallGatewayLogic {
     clientUserId: string | undefined,
     body: CallIcePayload,
   ): SimpleCallOutcome & { peerId?: string; relay?: { callId: string; candidate: CallIcePayload['candidate']; fromUserId: string } } {
-    if (!assertSenderMatches(clientUserId, body.fromUserId) || !body.callId) {
+    if (!assertCallSenderMatches(clientUserId, body.fromUserId) || !body.callId) {
       return { ok: false, error: 'unauthorized' };
     }
     if (
@@ -285,7 +285,7 @@ export class ChatCallGatewayLogic {
     body: CallIdPayload,
     role: 'callee' | 'participant',
   ): SimpleCallOutcome & { session?: CallSession } {
-    if (!assertSenderMatches(clientUserId, body.fromUserId) || !body.callId) {
+    if (!assertCallSenderMatches(clientUserId, body.fromUserId) || !body.callId) {
       return { ok: false, error: 'unauthorized' };
     }
     if (!isValidCallId(body.callId) || !this.rateLimit.allow(clientUserId, 'control')) {

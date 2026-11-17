@@ -162,11 +162,16 @@ export class ChatGateway implements OnGatewayConnection {
   }
 
   @SubscribeMessage('typing:start')
-  typingStart(
+  async typingStart(
     @ConnectedSocket() client: AuthedSocket,
     @MessageBody() body: { channelId: string },
   ) {
-    if (!client.userId) return;
+    if (!(await this.requireAuth(client)) || !client.userId) return;
+    try {
+      await this.channels.assertMember(BigInt(body.channelId), BigInt(client.userId));
+    } catch {
+      return;
+    }
     client.to(`channel:${body.channelId}`).emit('typing:update', {
       channelId: body.channelId,
       userId: client.userId,
@@ -175,11 +180,16 @@ export class ChatGateway implements OnGatewayConnection {
   }
 
   @SubscribeMessage('typing:stop')
-  typingStop(
+  async typingStop(
     @ConnectedSocket() client: AuthedSocket,
     @MessageBody() body: { channelId: string },
   ) {
-    if (!client.userId) return;
+    if (!(await this.requireAuth(client)) || !client.userId) return;
+    try {
+      await this.channels.assertMember(BigInt(body.channelId), BigInt(client.userId));
+    } catch {
+      return;
+    }
     client.to(`channel:${body.channelId}`).emit('typing:update', {
       channelId: body.channelId,
       userId: client.userId,
@@ -235,7 +245,10 @@ export class ChatGateway implements OnGatewayConnection {
   ) {
     if (!(await this.requireAuth(client))) return { ok: false, error: 'unauthorized' };
     this.flushExpiredSessions();
-    const auth = this.callLogic.evaluateAccept(client.userId, body);
+    const auth = this.callLogic.evaluateAccept(client.userId, {
+      ...body,
+      fromUserId: client.userId,
+    });
     if (!auth.ok) return auth;
     const session = auth.session!;
     this.callSessions.updateState(body.callId, 'active');
@@ -253,7 +266,10 @@ export class ChatGateway implements OnGatewayConnection {
   ) {
     if (!(await this.requireAuth(client))) return { ok: false, error: 'unauthorized' };
     this.flushExpiredSessions();
-    const auth = this.callLogic.evaluateRejectCall(client.userId, body);
+    const auth = this.callLogic.evaluateRejectCall(client.userId, {
+      ...body,
+      fromUserId: client.userId,
+    });
     if (!auth.ok) return auth;
     const session = auth.session!;
     this.server.to(this.userRoom(session.callerId)).emit('call:rejected', {
@@ -270,7 +286,11 @@ export class ChatGateway implements OnGatewayConnection {
   ) {
     if (!(await this.requireAuth(client))) return { ok: false, error: 'unauthorized' };
     this.flushExpiredSessions();
-    const auth = this.callLogic.evaluateCalleeAction(client.userId, body, 'participant');
+    const auth = this.callLogic.evaluateCalleeAction(
+      client.userId,
+      { ...body, fromUserId: client.userId },
+      'participant',
+    );
     if (!auth.ok) return auth;
     const session = auth.session!;
     if (session.state !== 'ringing') {
@@ -293,7 +313,11 @@ export class ChatGateway implements OnGatewayConnection {
   ) {
     if (!(await this.requireAuth(client))) return { ok: false, error: 'unauthorized' };
     this.flushExpiredSessions();
-    const auth = this.callLogic.evaluateCalleeAction(client.userId, body, 'participant');
+    const auth = this.callLogic.evaluateCalleeAction(
+      client.userId,
+      { ...body, fromUserId: client.userId },
+      'participant',
+    );
     if (!auth.ok) return auth;
     const session = auth.session!;
     this.notifyCallEnded(body.callId, session.callerId, session.calleeId, 'hangup');
@@ -306,7 +330,10 @@ export class ChatGateway implements OnGatewayConnection {
     @MessageBody() body: CallSdpPayload,
   ) {
     if (!(await this.requireAuth(client))) return { ok: false, error: 'unauthorized' };
-    const result = this.callLogic.evaluateSdpRelay(client.userId, body);
+    const result = this.callLogic.evaluateSdpRelay(client.userId, {
+      ...body,
+      fromUserId: client.userId,
+    });
     if (!result.ok) return result;
     this.server.to(this.userRoom(result.peerId!)).emit('call:offer', {
       callId: body.callId,
@@ -322,7 +349,10 @@ export class ChatGateway implements OnGatewayConnection {
     @MessageBody() body: CallSdpPayload,
   ) {
     if (!(await this.requireAuth(client))) return { ok: false, error: 'unauthorized' };
-    const result = this.callLogic.evaluateSdpRelay(client.userId, body);
+    const result = this.callLogic.evaluateSdpRelay(client.userId, {
+      ...body,
+      fromUserId: client.userId,
+    });
     if (!result.ok) return result;
     this.server.to(this.userRoom(result.peerId!)).emit('call:answer', {
       callId: body.callId,
@@ -338,7 +368,10 @@ export class ChatGateway implements OnGatewayConnection {
     @MessageBody() body: CallIcePayload,
   ) {
     if (!(await this.requireAuth(client))) return { ok: false, error: 'unauthorized' };
-    const result = this.callLogic.evaluateIceRelay(client.userId, body);
+    const result = this.callLogic.evaluateIceRelay(client.userId, {
+      ...body,
+      fromUserId: client.userId,
+    });
     if (!result.ok) return result;
     this.server.to(this.userRoom(result.peerId!)).emit('call:ice', {
       callId: body.callId,

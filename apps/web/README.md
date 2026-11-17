@@ -77,10 +77,10 @@ Use credenciais TURN **dedicadas** ao Texsa (não reutilize senhas de admin do s
 Lógica de UI/estado do invite (`src/lib/u2u-call-flow.ts`):
 
 ```bash
-cd apps/api && pnpm vitest run src/chat/u2u-call-flow.spec.ts
+cd apps/web && pnpm test
 ```
 
-Sinalização no servidor: `cd apps/api && pnpm test -- src/chat`.
+Sinalização no servidor (sem importar o web): `cd apps/api && pnpm test -- src/chat`.
 
 ### Checklist manual — áudio bidirecional (critério 3)
 
