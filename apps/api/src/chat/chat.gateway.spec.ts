@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CallSessionStore } from './call-session.store.js';
 import { ChatCallGatewayLogic } from './chat-call-gateway.logic.js';
 import { CALL_SIGNAL_LIMITS } from './call-signaling-limits.js';
-import type { CallInvitePayload } from './call-signaling.js';
+import type { CallIcePayload, CallInvitePayload, CallSdpPayload } from './call-signaling.js';
 
 const CID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const CID_B = 'bbbbbbbb-bbbb-4ccc-8ddd-ffffffffffff';
@@ -246,6 +246,22 @@ describe('ChatCallGatewayLogic', () => {
     expect(outcome.expired).toHaveLength(1);
     expect(outcome.expired[0]?.reason).toBe('ring_timeout');
     expect(store.get('eeeeeeee-bbbb-4ccc-8ddd-000000000001')).toBeUndefined();
+  });
+
+  it('rejeita relay SDP/ICE sem fromUserId em sessão active', () => {
+    const { logic } = logicWithSession('active');
+    const sdp = logic.evaluateSdpRelay('1', {
+      callId: CID,
+      sdp: { type: 'offer', sdp: 'v=0' },
+    } as CallSdpPayload);
+    expect(sdp.ok).toBe(false);
+    if (!sdp.ok) expect(sdp.error).toBe('unauthorized');
+    const ice = logic.evaluateIceRelay('1', {
+      callId: CID,
+      candidate: { candidate: 'x' },
+    } as CallIcePayload);
+    expect(ice.ok).toBe(false);
+    if (!ice.ok) expect(ice.error).toBe('unauthorized');
   });
 
   it('expires stale active sessions by TTL', () => {

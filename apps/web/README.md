@@ -87,7 +87,7 @@ Sinalização no servidor (sem importar o web): `cd apps/api && pnpm test -- src
 Com API e web no ar e **dois usuários** (dois browsers ou anônimo + normal):
 
 1. A em **Pessoas** ou DM → **Ligar** para B: B vê incoming; A fica em **Chamando…** só após o servidor aceitar o invite.
-2. B **Atender**: fala de A audível em B e de B audível em A; UI **Em chamada**.
+2. B **Atender**: o app envia aceite ao servidor **antes** de abrir o microfone (ICE só após sessão `active`); fala audível nos dois lados; UI **Em chamada**.
 3. A **Encerrar**: ambos voltam ao chat; LED de microfone apagado nos dois.
 4. B **Recusar** numa nova tentativa: A vê recusa, sem captura de áudio ativa.
 5. B offline/aba fechada: A vê **Usuário indisponível** sem ficar em chamando.

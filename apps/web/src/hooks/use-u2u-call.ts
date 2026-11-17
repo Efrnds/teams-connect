@@ -199,21 +199,24 @@ export function useU2uCall({
     [clearRingTimer, phase, resetCall, resolveDisplayName, ringTimeoutMs, selfUserId, socket, withSender],
   );
 
-  const acceptCall = useCallback(async () => {
+  const acceptCall = useCallback(() => {
     if (!socket || !callIdRef.current) return;
     clearRingTimer();
     setPhase('connecting');
-    try {
-      await ensurePeerConnection();
-      socket.emit('call:accept', withSender({ callId: callIdRef.current }));
-    } catch (err) {
-      const id = callIdRef.current;
-      if (socket && id) {
-        socket.emit('call:reject', withSender({ callId: id }));
-      }
-      resetCall(messageForMediaError(err));
-    }
-  }, [clearRingTimer, ensurePeerConnection, resetCall, socket, withSender]);
+    const id = callIdRef.current;
+    socket.emit(
+      'call:accept',
+      withSender({ callId: id }),
+      (ack?: { ok?: boolean; error?: string }) => {
+        if (ack?.ok) return;
+        resetCall(
+          ack?.error === 'unauthorized'
+            ? 'Sessão expirada. Entre novamente.'
+            : 'Não foi possível atender a chamada.',
+        );
+      },
+    );
+  }, [clearRingTimer, resetCall, socket, withSender]);
 
   const rejectCall = useCallback(() => {
     const id = callIdRef.current;
