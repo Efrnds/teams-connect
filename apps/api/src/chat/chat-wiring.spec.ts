@@ -28,6 +28,14 @@ describe('u2u wiring no repositório', () => {
     expect(pkg).toContain('socket.io');
   });
 
+  it('web inclui socket.io-client e componentes ui (build Next)', () => {
+    const pkg = readFileSync(resolve(WEB_ROOT, 'package.json'), 'utf8');
+    expect(pkg).toContain('socket.io-client');
+    expect(pkg).toContain('vitest');
+    const button = resolve(WEB_ROOT, 'src/components/ui/button.tsx');
+    expect(readFileSync(button, 'utf8')).toContain('Button');
+  });
+
   it('web expõe /login e home redireciona para /app ou /login', () => {
     const login = readFileSync(WEB_LOGIN, 'utf8');
     expect(login.length).toBeGreaterThan(20);
