@@ -5,7 +5,23 @@ on:
   pull_request:
 
 jobs:
+  u2u-source-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sem dist/generated versionados; gateway e cliente em src
+        run: |
+          test "$(git ls-files 'apps/api/dist' 'apps/api/src/generated' | wc -l)" -eq 0
+          test -f apps/api/src/chat/chat.gateway.ts
+          test -f apps/api/src/chat/chat.module.ts
+          test -f apps/web/src/hooks/use-u2u-call.ts
+          test -f apps/web/src/components/chat-shell.tsx
+          test -f apps/web/src/app/app/page.tsx
+          ! test -f apps/api/src/chat/u2u-call-flow.spec.ts
+          grep -q ChatModule apps/api/src/app.module.ts
+
   api-chat:
+    needs: u2u-source-hygiene
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -27,6 +43,7 @@ jobs:
       - run: pnpm test -- src/chat
 
   web-call-flow:
+    needs: u2u-source-hygiene
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -45,6 +62,7 @@ jobs:
       - run: pnpm test
 
   web-build:
+    needs: u2u-source-hygiene
     runs-on: ubuntu-latest
     defaults:
       run:
