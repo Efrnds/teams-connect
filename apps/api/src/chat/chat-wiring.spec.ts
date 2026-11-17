@@ -4,7 +4,11 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const API_SRC = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const WEB_APP = resolve(API_SRC, '../../web/src/app/app/page.tsx');
+const API_ROOT = resolve(API_SRC, '..');
+const WEB_ROOT = resolve(API_SRC, '../../web');
+const WEB_APP = resolve(WEB_ROOT, 'src/app/app/page.tsx');
+const WEB_HOME = resolve(WEB_ROOT, 'src/app/page.tsx');
+const WEB_LOGIN = resolve(WEB_ROOT, 'src/app/login/page.tsx');
 
 /** Garante que o PR entrega wiring ponta a ponta (não só lógica isolada). */
 describe('u2u wiring no repositório', () => {
@@ -16,6 +20,19 @@ describe('u2u wiring no repositório', () => {
   it('web /app renderiza ChatShell (botão Ligar)', () => {
     const page = readFileSync(WEB_APP, 'utf8');
     expect(page).toContain('ChatShell');
+  });
+
+  it('package.json da API inclui WebSocket (compila com gateway)', () => {
+    const pkg = readFileSync(resolve(API_ROOT, 'package.json'), 'utf8');
+    expect(pkg).toContain('@nestjs/websockets');
+    expect(pkg).toContain('socket.io');
+  });
+
+  it('web expõe /login e home redireciona para /app ou /login', () => {
+    const login = readFileSync(WEB_LOGIN, 'utf8');
+    expect(login.length).toBeGreaterThan(20);
+    const home = readFileSync(WEB_HOME, 'utf8');
+    expect(home).toMatch(/\/app|\/login/);
   });
 
   it('gateway declara handlers call:accept/cancel/end', () => {
