@@ -19,3 +19,21 @@ apps/api/src/generated/
 # OS / editor
 .DS_Store
 *.log
+
+# Artefatos locais da factory/automação (não fazem parte do PR)
+.agents-skills/
+.claude/
+.codex/
+.logs/
+handoff/
+AGENTS.md
+RTK.md
+CLAUDE.md
+
+# Gerados fora do escopo u2u (não commitar no PR de chamadas)
+apps/api/dist/chat/
+apps/web/components.json
+apps/web/vitest.config.ts
+apps/web/src/app/app/
+apps/web/src/app/login/
+apps/web/src/components/ui/

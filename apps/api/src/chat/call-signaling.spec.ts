@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assertCalleeForSession,
   assertCalleeNotSelf,
+  assertCallSenderMatches,
   assertSenderMatches,
   isSessionParticipant,
   type CallSession,
@@ -21,6 +22,12 @@ describe('call-signaling validation', () => {
     expect(assertSenderMatches(undefined, '1')).toBe(false);
     expect(assertSenderMatches('1', undefined)).toBe(true);
     expect(assertSenderMatches('1', '1')).toBe(true);
+  });
+
+  it('call:* exige fromUserId explícito', () => {
+    expect(assertCallSenderMatches('1', '1')).toBe(true);
+    expect(assertCallSenderMatches('1', undefined)).toBe(false);
+    expect(assertCallSenderMatches('1', '2')).toBe(false);
   });
 
   it('rejects self-call', () => {

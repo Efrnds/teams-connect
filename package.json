@@ -1,5 +1,11 @@
 {
   "name": "teams-texsa",
   "private": true,
-  "packageManager": "pnpm@9.15.9"
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "test:chat": "pnpm --dir apps/api test -- src/chat",
+    "test:web-call": "pnpm --dir apps/web test",
+    "verify:u2u-wiring": "pnpm --dir apps/api test -- src/chat/chat-wiring.spec.ts"
+  }
 }

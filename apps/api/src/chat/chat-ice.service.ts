@@ -1,4 +1,9 @@
-import { Injectable, TooManyRequestsException, UnauthorizedException } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { CallSignalingRateLimit } from './call-signaling-limits.js';
 import { buildEphemeralTurnCredentials } from './ice-turn-credentials.js';
@@ -38,7 +43,10 @@ export class ChatIceService {
     const payload = await this.jwt.verifyAsync<{ sub: string }>(token, { secret });
     const userId = payload.sub;
     if (!this.fetchLimit.allowIceFetch(userId)) {
-      throw new TooManyRequestsException('Limite de requisições ICE excedido.');
+      throw new HttpException(
+        'Limite de requisições ICE excedido.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
 
     const iceServers: IceServerDto[] = [];

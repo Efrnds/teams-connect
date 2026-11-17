@@ -1,0 +1,83 @@
+name: test
+on:
+  push:
+    branches: [main, 'factory/**']
+  pull_request:
+
+jobs:
+  u2u-source-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sem dist/generated versionados; gateway e cliente em src
+        run: |
+          test "$(git ls-files 'apps/api/dist' 'apps/api/src/generated' | wc -l)" -eq 0
+          test -f apps/api/src/chat/chat.gateway.ts
+          test -f apps/api/src/chat/chat.module.ts
+          test -f apps/web/src/hooks/use-u2u-call.ts
+          test -f apps/web/src/components/chat-shell.tsx
+          test -f apps/web/src/app/app/page.tsx
+          ! test -f apps/api/src/chat/u2u-call-flow.spec.ts
+          grep -q ChatModule apps/api/src/app.module.ts
+
+  api-chat:
+    needs: u2u-source-hygiene
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: apps/api/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prisma generate
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      - run: pnpm test -- src/chat
+
+  web-call-flow:
+    needs: u2u-source-hygiene
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+
+  web-build:
+    needs: u2u-source-hygiene
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:4000
