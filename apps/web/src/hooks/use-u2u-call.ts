@@ -22,13 +22,6 @@ type Options = {
   ringTimeoutMs?: number;
 };
 
-function newCallId(): string {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return `call-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
 export function useU2uCall({
   socket,
   selfUserId,
@@ -158,9 +151,8 @@ export function useU2uCall({
         return;
       }
       if (phase !== 'idle') return;
-      const id = newCallId();
       isCallerRef.current = true;
-      callIdRef.current = id;
+      callIdRef.current = null;
       setPeer({
         userId: calleeUserId,
         displayName: resolveDisplayName(calleeUserId),
@@ -169,14 +161,15 @@ export function useU2uCall({
       setStatusMessage('Verificando disponibilidade…');
       socket.emit(
         'call:invite',
-        { callId: id, calleeUserId },
-        (ack?: { ok?: boolean; error?: string }) => {
-          if (callIdRef.current !== id) return;
-          if (!shouldStartRingingAfterInvite(ack)) {
+        { calleeUserId, fromUserId: selfUserId },
+        (ack?: { ok?: boolean; error?: string; callId?: string }) => {
+          const id = ack?.callId ?? callIdRef.current;
+          if (!shouldStartRingingAfterInvite(ack) || !id) {
             const msg = messageAfterInviteAck(ack);
             resetCall(msg ?? undefined);
             return;
           }
+          callIdRef.current = id;
           setCallId(id);
           setPhase('outgoing');
           setStatusMessage(null);

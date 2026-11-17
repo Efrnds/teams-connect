@@ -109,7 +109,11 @@ Com API e web no ar e **dois usuários** (dois browsers ou anônimo + normal):
 | 6 | Chat normal sem regressão | **pendente QA** |
 | 7 | Microfone negado; mensagem clara | pass (`messageForMediaError` + teste) |
 
-**Status 2026-11-16:** itens 4–5 e 7 cobertos por testes unitários; **itens 1–3 e 6 (áudio ao vivo e chat)** exigem QA com dois browsers — preencher pass/fail antes do merge.
+**Status 2026-11-17:** API+web compilam; `ChatModule` no `AppModule`; `/app` → `ChatShell`. **Itens 2–3 (áudio bidirecional)** exigem QA humano com duas contas (comando rápido abaixo). CI não substitui microfone.
+
+**Roteiro QA (2 contas, ~5 min):** subir API+web → login A em browser normal e B em anônimo → ambos em `/app` → A liga B → B atende → falar nos dois lados → A encerra → repetir com B recusando.
+
+**Várias réplicas da API:** sessões de chamada ficam em memória por processo; use **sticky WebSocket** no load balancer ou uma réplica até haver store compartilhado.
 
 ### Escala / múltiplas instâncias da API
 

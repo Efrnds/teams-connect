@@ -19,7 +19,7 @@ import {
 import { CallSessionStore } from './call-session.store.js';
 
 export type InviteOutcome =
-  | { ok: true; notifyCallee: { callId: string; callerUserId: string } }
+  | { ok: true; callId: string; notifyCallee: { callId: string; callerUserId: string } }
   | {
       ok: false;
       error:
@@ -117,10 +117,11 @@ export class ChatCallGatewayLogic {
   ): InviteOutcome {
     this.callSessions.expireStaleRinging();
     this.callSessions.expireStaleActive();
-    if (!assertSenderMatches(clientUserId, body.fromUserId) || !body.callId || !body.calleeUserId) {
+    if (!assertSenderMatches(clientUserId, body.fromUserId) || !body.calleeUserId) {
       return { ok: false, error: 'unauthorized' };
     }
-    if (!isValidCallId(body.callId) || body.calleeUserId.length > CALL_SIGNAL_LIMITS.maxCalleeIdLen) {
+    const callId = body.callId;
+    if (!callId || !isValidCallId(callId) || body.calleeUserId.length > CALL_SIGNAL_LIMITS.maxCalleeIdLen) {
       return { ok: false, error: 'payload_too_large' };
     }
     if (
@@ -149,7 +150,7 @@ export class ChatCallGatewayLogic {
         error: 'busy',
         emitToCaller: {
           event: 'call:busy',
-          payload: { callId: body.callId, calleeUserId: body.calleeUserId },
+          payload: { callId: callId ?? '', calleeUserId: body.calleeUserId },
         },
       };
     }
@@ -159,13 +160,13 @@ export class ChatCallGatewayLogic {
         error: 'offline',
         emitToCaller: {
           event: 'call:unavailable',
-          payload: { callId: body.callId, calleeUserId: body.calleeUserId },
+          payload: { callId: callId ?? '', calleeUserId: body.calleeUserId },
         },
       };
     }
 
     const created = this.callSessions.create({
-      callId: body.callId,
+      callId,
       callerId: clientUserId,
       calleeId: body.calleeUserId,
       state: 'ringing',
@@ -177,8 +178,22 @@ export class ChatCallGatewayLogic {
 
     return {
       ok: true,
-      notifyCallee: { callId: body.callId, callerUserId: clientUserId },
+      callId,
+      notifyCallee: { callId, callerUserId: clientUserId },
     };
+  }
+
+  /** Único caminho ringing → active: só o callee da sessão. */
+  evaluateAccept(
+    clientUserId: string | undefined,
+    body: CallIdPayload,
+  ): SimpleCallOutcome & { session?: CallSession } {
+    const base = this.evaluateCalleeAction(clientUserId, body, 'callee');
+    if (!base.ok) return base;
+    if (base.session!.state !== 'ringing') {
+      return { ok: false, error: 'not_found' };
+    }
+    return base;
   }
 
   evaluateSdpRelay(

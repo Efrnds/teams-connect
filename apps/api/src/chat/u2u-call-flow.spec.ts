@@ -10,7 +10,10 @@ import {
 
 describe('u2u-call-flow (web client)', () => {
   it('só inicia ringing após ack ok', () => {
-    expect(shouldStartRingingAfterInvite({ ok: true })).toBe(true);
+    expect(shouldStartRingingAfterInvite({ ok: true, callId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' })).toBe(
+      true,
+    );
+    expect(shouldStartRingingAfterInvite({ ok: true })).toBe(false);
     expect(shouldStartRingingAfterInvite({ ok: false, error: 'offline' })).toBe(false);
   });
 

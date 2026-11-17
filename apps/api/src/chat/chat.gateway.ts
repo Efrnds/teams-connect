@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   ConnectedSocket,
   MessageBody,
@@ -145,6 +146,7 @@ export class ChatGateway implements OnGatewayConnection {
     @ConnectedSocket() client: AuthedSocket,
     @MessageBody() body: { channelId: string },
   ) {
+    if (!(await this.requireAuth(client))) return { ok: false };
     if (!client.userId) {
       for (let i = 0; i < 20 && !client.userId; i++) {
         await new Promise((r) => setTimeout(r, 25));
@@ -198,15 +200,24 @@ export class ChatGateway implements OnGatewayConnection {
     } catch {
       calleeInDirectory = false;
     }
+    const serverCallId = randomUUID();
     if (!calleeInDirectory) {
       client.emit('call:unavailable', {
-        callId: body.callId,
+        callId: serverCallId,
         calleeUserId: body.calleeUserId,
       });
       return { ok: false, error: 'offline' };
     }
     const calleeOnline = await this.isUserOnline(body.calleeUserId);
-    const result = this.callLogic.evaluateInvite(client.userId, body, calleeOnline);
+    const result = this.callLogic.evaluateInvite(
+      client.userId,
+      {
+        ...body,
+        callId: serverCallId,
+        fromUserId: client.userId,
+      },
+      calleeOnline,
+    );
     if (!result.ok) {
       if (result.emitToCaller) {
         client.emit(result.emitToCaller.event, result.emitToCaller.payload);
@@ -214,7 +225,7 @@ export class ChatGateway implements OnGatewayConnection {
       return { ok: false, error: result.error };
     }
     this.server.to(this.userRoom(body.calleeUserId)).emit('call:incoming', result.notifyCallee);
-    return { ok: true };
+    return { ok: true, callId: result.callId };
   }
 
   @SubscribeMessage('call:accept')
@@ -224,12 +235,9 @@ export class ChatGateway implements OnGatewayConnection {
   ) {
     if (!(await this.requireAuth(client))) return { ok: false, error: 'unauthorized' };
     this.flushExpiredSessions();
-    const auth = this.callLogic.evaluateCalleeAction(client.userId, body, 'callee');
+    const auth = this.callLogic.evaluateAccept(client.userId, body);
     if (!auth.ok) return auth;
     const session = auth.session!;
-    if (session.state !== 'ringing') {
-      return { ok: false, error: 'not_found' };
-    }
     this.callSessions.updateState(body.callId, 'active');
     this.server.to(this.userRoom(session.callerId)).emit('call:accepted', {
       callId: body.callId,

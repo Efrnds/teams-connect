@@ -1,9 +1,9 @@
-export type InviteAck = { ok?: boolean; error?: string } | undefined;
+import type { CallPhase } from './call-events';
 
-export type ClientCallPhase = 'idle' | 'incoming' | 'outgoing' | 'connecting' | 'active';
+export type InviteAck = { ok?: boolean; error?: string; callId?: string } | undefined;
 
 /** Callee ocupa: rejeita invite automático se já há outra chamada local. */
-export function shouldRejectIncomingWhileBusy(phase: ClientCallPhase): boolean {
+export function shouldRejectIncomingWhileBusy(phase: CallPhase): boolean {
   return phase !== 'idle';
 }
 
@@ -19,7 +19,7 @@ export function assertSignalingFromPeer(
 
 /** Só entra em "Chamando…" após o servidor aceitar o invite. */
 export function shouldStartRingingAfterInvite(ack: InviteAck): boolean {
-  return ack?.ok === true;
+  return ack?.ok === true && Boolean(ack.callId);
 }
 
 export function messageAfterInviteAck(ack: InviteAck): string | null {
