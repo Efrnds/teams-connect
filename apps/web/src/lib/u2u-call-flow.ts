@@ -7,12 +7,13 @@ export function shouldRejectIncomingWhileBusy(phase: ClientCallPhase): boolean {
   return phase !== 'idle';
 }
 
-/** Bloqueia SDP/ICE se o servidor rotular remetente diferente do peer esperado. */
+/** Bloqueia SDP/ICE sem fromUserId ou com remetente diferente do peer esperado. */
 export function assertSignalingFromPeer(
   expectedPeerUserId: string | undefined,
   fromUserId: string | undefined,
 ): boolean {
-  if (!expectedPeerUserId || !fromUserId) return true;
+  if (!expectedPeerUserId) return false;
+  if (!fromUserId) return false;
   return fromUserId === expectedPeerUserId;
 }
 

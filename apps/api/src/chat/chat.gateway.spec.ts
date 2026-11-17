@@ -27,7 +27,7 @@ describe('ChatCallGatewayLogic', () => {
       callId: 'c1',
       calleeUserId: '2',
       fromUserId: '1',
-    }, true, true);
+    }, true);
     expect(result).toEqual({ ok: false, error: 'unauthorized' });
   });
 
@@ -37,22 +37,7 @@ describe('ChatCallGatewayLogic', () => {
       callId: 'c1',
       calleeUserId: '2',
       fromUserId: '1',
-    }, false, true);
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error).toBe('offline');
-      expect(result.emitToCaller?.event).toBe('call:unavailable');
-    }
-  });
-
-  it('rejects invite when callee is unknown to the gateway', () => {
-    const logic = new ChatCallGatewayLogic(new CallSessionStore());
-    const result = logic.evaluateInvite(
-      '1',
-      { callId: 'c1', calleeUserId: '2', fromUserId: '1' },
-      true,
-      false,
-    );
+    }, false);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error).toBe('offline');
@@ -66,7 +51,7 @@ describe('ChatCallGatewayLogic', () => {
       callId: 'new-call',
       calleeUserId: '2',
       fromUserId: '1',
-    }, true, true);
+    }, true);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error).toBe('busy');
@@ -139,7 +124,6 @@ describe('ChatCallGatewayLogic', () => {
         extra: 'x'.repeat(CALL_SIGNAL_LIMITS.maxInviteJsonChars),
       } as Parameters<ChatCallGatewayLogic['evaluateInvite']>[1],
       true,
-      true,
     );
     expect(result).toEqual({ ok: false, error: 'payload_too_large' });
   });
@@ -155,7 +139,6 @@ describe('ChatCallGatewayLogic', () => {
           calleeUserId: '2',
           fromUserId: '1',
         },
-        true,
         true,
       );
       if (!result.ok && result.error === 'rate_limited') {
@@ -209,7 +192,6 @@ describe('ChatCallGatewayLogic', () => {
         '1',
         { callId: `c-${i}`, calleeUserId: '2', fromUserId: '1' },
         true,
-        true,
       );
       expect(ok.ok).toBe(true);
       store.remove(`c-${i}`);
@@ -217,7 +199,6 @@ describe('ChatCallGatewayLogic', () => {
     const blocked = logic.evaluateInvite(
       '1',
       { callId: 'blocked', calleeUserId: '2', fromUserId: '1' },
-      true,
       true,
     );
     expect(blocked).toEqual({ ok: false, error: 'rate_limited' });

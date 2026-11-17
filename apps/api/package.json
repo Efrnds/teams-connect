@@ -11,15 +11,16 @@
     "deploy": "nest deploy",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
-    "start:dev": "nest start --watch",
+    "start:dev": "tsx watch src/main.ts",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
+    "start:prod": "tsx src/main.ts",
     "lint": "oxlint --type-aware src/ test/",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
-    "test:e2e": "vitest run --config ./vitest.config.e2e.ts"
+    "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
@@ -28,6 +29,8 @@
     "@nestjs/jwt": "^12.0.3",
     "@nestjs/passport": "^12.0.0",
     "@nestjs/platform-express": "^12.0.1",
+    "@nestjs/platform-socket.io": "^12.5.0",
+    "@nestjs/websockets": "^12.5.0",
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
     "bcrypt": "^6.0.0",
@@ -38,7 +41,8 @@
     "passport-jwt": "^4.0.1",
     "pg": "^8.23.1",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "socket.io": "^4.8.4"
   },
   "devDependencies": {
     "@nestjs/cli": "^12.0.0",
@@ -58,6 +62,7 @@
     "prisma": "7.10.1",
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "vite": "^8.0.0",
     "vitest": "^4.1.2"

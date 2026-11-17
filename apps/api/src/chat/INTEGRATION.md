@@ -21,12 +21,11 @@ export class AppModule {}
 Pré-requisitos: `ChannelsModule` (join de canais), JWT configurado, dependências `socket.io` /
 `@nestjs/websockets` no `package.json` da API (stack Texsa completa).
 
-### Callee conhecido
+### Callee no diretório
 
-O gateway só aceita `call:invite` para `calleeUserId` presente em `CallKnownUsersRegistry`
-(usuário que já conectou em `/chat` com JWT válido neste processo). Em produção com diretório
-`GET /users`, você pode estender o registry na inicialização da API para incluir todos os IDs
-válidos do diretório (fora deste PR).
+`call:invite` exige `calleeUserId` existente em `UsersService` (diretório `GET /users`) e socket
+ativo no namespace `/chat` (presença online). Quem está no app mas sem abrir `/app` ainda aparece
+como indisponível — é o critério de spec (offline no Socket.IO).
 
 ### TTL de chamada ativa
 

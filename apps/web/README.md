@@ -18,15 +18,13 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ## Chamadas de voz (WebRTC / ICE)
 
-### Integração em runtime (obrigatória para funcionar)
+### Como subir (Texsa + u2u)
 
-Este PR entrega **só** os arquivos da feature (escopo travado). Para ligação ponta a ponta:
+1. **API:** `cd apps/api && pnpm install && pnpm exec prisma migrate deploy && pnpm start:dev` — o `AppModule` já importa `ChatModule` (Socket.IO `/chat`).
+2. **Web:** `cd apps/web && pnpm install && pnpm dev` — a home redireciona para `/app` (`ChatShell` com **Ligar**).
+3. Variáveis: `JWT_ACCESS_SECRET`, `NEXT_PUBLIC_API_URL=http://localhost:4000`, ICE opcional (tabela abaixo).
 
-1. No `AppModule` da API, importar `ChatModule` — passo a passo em [`apps/api/src/chat/INTEGRATION.md`](../api/src/chat/INTEGRATION.md).
-2. Garantir dependências do chat Texsa (`ChannelsModule`, JWT, `socket.io` na API).
-3. Na web, renderizar `ChatShell` na rota autenticada.
-
-Sem (1), a UI “Ligar” não recebe eventos `call:*`.
+Detalhes técnicos extras: [`apps/api/src/chat/INTEGRATION.md`](../api/src/chat/INTEGRATION.md).
 
 **Segredos:** não versionar `.env` com senhas (`deploy/compose/.env` no repositório deve usar só variáveis locais não commitadas; rotacionar credenciais expostas).
 
@@ -107,7 +105,7 @@ Com API e web no ar e **dois usuários** (dois browsers ou anônimo + normal):
 | 2 | B atende; áudio bidirecional audível | **pendente QA** (não automatizável no CI) |
 | 3 | A encerra; mic liberado nos dois | pass (teardown no hook) / **áudio: pendente QA** |
 | 4 | B recusa; sem mídia ativa | pass (testes + fluxo UI) |
-| 5 | B offline ou ID desconhecido; A vê indisponível sem “chamando” | pass (testes gateway + `u2u-call-flow`) |
+| 5 | B sem socket `/chat` ou ID fora do diretório; A vê indisponível | pass (testes + `UsersService`) |
 | 6 | Chat normal sem regressão | **pendente QA** |
 | 7 | Microfone negado; mensagem clara | pass (`messageForMediaError` + teste) |
 

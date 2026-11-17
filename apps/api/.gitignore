@@ -5,3 +5,13 @@ node_modules
 /generated/prisma
 
 /generated/prisma
+
+# factory local (raiz do monorepo)
+.agents-skills/
+.claude/
+.codex/
+.logs/
+handoff/
+AGENTS.md
+RTK.md
+CLAUDE.md

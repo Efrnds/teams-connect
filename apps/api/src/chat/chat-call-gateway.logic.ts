@@ -114,7 +114,6 @@ export class ChatCallGatewayLogic {
     clientUserId: string | undefined,
     body: CallInvitePayload,
     calleeOnline: boolean,
-    calleeKnown: boolean,
   ): InviteOutcome {
     this.callSessions.expireStaleRinging();
     this.callSessions.expireStaleActive();
@@ -154,7 +153,7 @@ export class ChatCallGatewayLogic {
         },
       };
     }
-    if (!calleeKnown || !calleeOnline) {
+    if (!calleeOnline) {
       return {
         ok: false,
         error: 'offline',

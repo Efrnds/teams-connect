@@ -35,7 +35,8 @@ describe('u2u-call-flow (web client)', () => {
   it('valida remetente de sinalização WebRTC', () => {
     expect(assertSignalingFromPeer('2', '2')).toBe(true);
     expect(assertSignalingFromPeer('2', '9')).toBe(false);
-    expect(assertSignalingFromPeer(undefined, '9')).toBe(true);
+    expect(assertSignalingFromPeer(undefined, '9')).toBe(false);
+    expect(assertSignalingFromPeer('2', undefined)).toBe(false);
   });
 
   it('mapeia erro de microfone', () => {
