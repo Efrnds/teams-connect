@@ -1,6 +1,7 @@
 {
   "name": "teams-texsa",
   "private": true,
+  "packageManager": "pnpm@9.15.9",
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "test:chat": "pnpm --dir apps/api test -- src/chat",
