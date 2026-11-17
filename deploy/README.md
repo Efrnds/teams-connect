@@ -36,6 +36,8 @@ Ajuste principalmente:
 
 > Chat e WebSocket só funcionam fora do `localhost` quando `NEXT_PUBLIC_API_URL` e `CORS_ORIGIN` apontam para o host acessível pelos clientes na rede.
 
+A imagem da API inclui o CLI do **Prisma** em dependências de produção para o entrypoint rodar `prisma migrate deploy` antes de subir o Nest.
+
 ## 3. Subir manualmente (validação)
 
 ```bash

@@ -17,7 +17,8 @@ FROM deps AS build
 COPY apps/api/ ./
 RUN pnpm exec prisma generate
 RUN pnpm run build
-RUN pnpm prune --prod
+# Mantém prisma CLI (agora dependency) após podar devDeps — migrate deploy no entrypoint
+RUN pnpm prune --prod && test -x node_modules/.bin/prisma
 
 FROM base AS runner
 ENV NODE_ENV=production
