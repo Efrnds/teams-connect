@@ -1,0 +1,33 @@
+name: Deploy (self-hosted)
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/teams-texsa' }}
+
+jobs:
+  deploy:
+    name: Production deploy
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (
+        vars.ENABLE_SELF_HOSTED_CD == 'true' &&
+        github.event.workflow_run.conclusion == 'success'
+      )
+    runs-on: [self-hosted, linux]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Deploy with Docker Compose
+        env:
+          DEPLOY_REF: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref_name }}
+        run: bash deploy/scripts/cd-deploy.sh

@@ -1,0 +1,21 @@
+# dependencies
+node_modules/
+
+# build outputs
+apps/api/dist/
+apps/web/.next/
+apps/web/out/
+**/*.tsbuildinfo
+
+# env (keep examples)
+.env
+.env.*
+!.env*.example
+!deploy/compose/.env.prod.example
+
+# prisma generated client (regenerate in CI/Docker)
+apps/api/src/generated/
+
+# OS / editor
+.DS_Store
+*.log
