@@ -1,35 +1,28 @@
-# Integração do ChatModule (obrigatória para u2u)
+# Ligação u2u — integração Nest + web
 
-Este diretório entrega `ChatGateway` (Socket.IO `/chat`) e `GET /api/chat/ice-servers`.
-**Sem importar `ChatModule` no `AppModule`, nenhum evento `call:*` é exposto.**
+Este PR **inclui** o wiring completo (não é passo manual pós-merge):
 
-## Alteração em `apps/api/src/app.module.ts` (fora do escopo travado deste PR)
+- **API:** `apps/api/src/app.module.ts` importa `ChatModule` (Socket.IO `/chat`, `GET /api/chat/ice-servers`).
+- **Web:** `apps/web/src/app/app/page.tsx` renderiza `ChatShell` (Pessoas/DM, **Ligar**, overlay atender/recusar, WebRTC).
+- **Stack:** Auth, Users, Channels, Messages, Prisma, `socket.io` / `@nestjs/websockets`.
 
-```typescript
-import { ChatModule } from './chat/chat.module.js';
+Subir: ver `apps/web/README.md` (API `:4000`, web `:3000`, `JWT_ACCESS_SECRET`, `NEXT_PUBLIC_API_URL`).
 
-@Module({
-  imports: [
-    // … módulos existentes (Config, Auth, Channels, …)
-    ChatModule,
-  ],
-  // …
-})
-export class AppModule {}
-```
+## Sinalização (`call:*`)
 
-Pré-requisitos: `ChannelsModule` (join de canais), JWT configurado, dependências `socket.io` /
-`@nestjs/websockets` no `package.json` da API (stack Texsa completa).
+| Evento | Quem | Estado |
+| --- | --- | --- |
+| `call:invite` | caller | cria `ringing`, JWT + callee no diretório + online |
+| `call:accept` | callee | `evaluateAccept` → `active`; SDP/ICE liberados |
+| `call:reject` / `call:cancel` | callee / caller | só `ringing` |
+| `call:end` | participante | encerra `active` ou `ringing` |
 
-### Callee no diretório
+Cada evento passa por `requireAuth` (JWT revalidado no socket).
 
-`call:invite` exige `calleeUserId` existente em `UsersService` (diretório `GET /users`) e socket
-ativo no namespace `/chat` (presença online). Quem está no app mas sem abrir `/app` ainda aparece
-como indisponível — é o critério de spec (offline no Socket.IO).
+## Callee no diretório
 
-### TTL de chamada ativa
+`call:invite` exige usuário em `GET /users` **e** socket em `/chat`. Quem só fez login HTTP mas não abriu `/app` aparece indisponível (offline no Socket.IO).
 
-Sessões em `active` são encerradas após `CALL_SIGNAL_LIMITS.activeTtlMs` (1h) para não
-manter o contato como ocupado para sempre.
+## TTL
 
-Após o import, reinicie a API e confirme conexão WebSocket em `/chat` com token JWT.
+Ringing e active têm TTL em memória (`CALL_SIGNAL_LIMITS`). Várias réplicas da API exigem sticky WebSocket ou store compartilhado.
